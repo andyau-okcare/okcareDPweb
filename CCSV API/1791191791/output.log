@@ -1,0 +1,2 @@
+/volume1/web/ccsv-backend/start-api.sh: line 2: set: -: invalid option
+set: usage: set [-abefhkmnptuvxBCHP] [-o option-name] [--] [arg ...]

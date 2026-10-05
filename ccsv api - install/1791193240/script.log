@@ -1,0 +1,1 @@
+cd /volume1/web/ccsv-backend && /var/packages/Node.js_v12/target/usr/local/bin/npm install --production --package-lock=false > /volume1/web/ccsv-backend/npm-install.log 2>&1

@@ -6,13 +6,39 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Create MariaDB connection pool on port 3307
+const requiredDbConfig = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+const missingDbConfig = requiredDbConfig.filter(key => !process.env[key]);
+if (missingDbConfig.length > 0) {
+    throw new Error(`Missing required database configuration: ${missingDbConfig.join(', ')}`);
+}
+const dbConfig = Object.fromEntries(
+    requiredDbConfig.map(key => [key, process.env[key].replace(/\r/g, '')])
+);
+
+const copayRates = {
+    'Cat I': 5,
+    'Cat II': 8,
+    'Cat III': 12,
+    'Cat IV': 16,
+    'Cat V': 25,
+    'Cat VI': 40
+};
+
+const formatCopayTier = (value) => {
+    if (typeof value === 'string' && value.startsWith('Cat ')) return value;
+    const rate = Number(value);
+    const match = Object.entries(copayRates).find(([, percentage]) =>
+        Math.abs(rate - percentage) < 0.0001 || Math.abs(rate * 100 - percentage) < 0.0001
+    );
+    return match ? match[0] : value || 'Cat I';
+};
+
 const pool = mysql.createPool({
-    host: '192.168.1.142',
-    port: 3307,
-    user: 'root',
-    password: 'Okc25258486!',
-    database: 'ccsv_system',
+    host: dbConfig.DB_HOST,
+    port: Number(dbConfig.DB_PORT),
+    user: dbConfig.DB_USER,
+    password: dbConfig.DB_PASSWORD,
+    database: dbConfig.DB_NAME,
     waitForConnections: true,
     connectionLimit: 10
 });
@@ -43,7 +69,12 @@ app.get('/api/clients', (req, res) => {
             hkid: c.hkid || '',
             nameCn: c.chinese_name || c.name_cn || '',
             nameEn: c.english_name || c.name_en || '',
-            copayTier: c.co_payment_percentage || c.copay_tier || 'Cat I',
+            copayTier: formatCopayTier(
+                c.co_payment_percentage !== undefined && c.co_payment_percentage !== null
+                    ? c.co_payment_percentage
+                    : c.copay_tier
+            ),
+            adminClientName: c.admin_client_name || '',
             district: c.service_district || c.district || '',
             address: c.address || '',
             telephone: c.telephone || '',
@@ -51,6 +82,89 @@ app.get('/api/clients', (req, res) => {
             pic: c.pic || 'ET'
         }));
         res.json(formatted);
+    });
+});
+
+// POST: Add a client using the clients table's required data fields
+app.post('/api/clients', (req, res) => {
+    const fields = [
+        { key: 'clientId', columns: ['client_id'] },
+        { key: 'patientId', columns: ['patient_id'] },
+        { key: 'voucherNo', columns: ['ccsv_number'] },
+        { key: 'hkid', columns: ['hkid'] },
+        { key: 'nameCn', columns: ['chinese_name'] },
+        { key: 'nameEn', columns: ['english_name'] },
+        { key: 'copayTier', columns: ['co_payment_percentage'] },
+        { key: 'adminClientName', columns: ['admin_client_name'] },
+        { key: 'district', columns: ['service_district'] },
+        { key: 'address', columns: ['address'] },
+        { key: 'telephone', columns: ['telephone'] }
+    ];
+    const requiredKeys = fields.map(field => field.key);
+    const body = req.body;
+
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return res.status(400).json({ error: 'Client details must be provided as an object.' });
+    }
+
+    const valuesByKey = {};
+    for (const { key } of fields) {
+        const value = body[key];
+        if (value !== undefined && value !== null && typeof value !== 'string') {
+            return res.status(400).json({ error: `${key} must be a string.` });
+        }
+        valuesByKey[key] = typeof value === 'string' ? value.trim() : '';
+    }
+
+    const missingKeys = requiredKeys.filter(key => !valuesByKey[key]);
+    if (missingKeys.length > 0) {
+        return res.status(400).json({ error: 'All client fields are required.' });
+    }
+    if (!/^P\d{8}$/.test(valuesByKey.clientId)) {
+        return res.status(400).json({ error: 'Client ID must use the format P followed by 8 digits.' });
+    }
+    if (!new RegExp(`^${valuesByKey.clientId}-\\d{4}$`).test(valuesByKey.patientId)) {
+        return res.status(400).json({ error: 'Patient ID must be the client ID followed by a hyphen and 4 digits.' });
+    }
+    if (!/^CCSV-\d{6}$/.test(valuesByKey.voucherNo)) {
+        return res.status(400).json({ error: 'Voucher number must use the format CCSV- followed by 6 digits.' });
+    }
+    if (!Object.prototype.hasOwnProperty.call(copayRates, valuesByKey.copayTier)) {
+        return res.status(400).json({ error: 'Invalid co-payment option.' });
+    }
+
+    pool.query('SHOW COLUMNS FROM clients', (schemaErr, schema) => {
+        if (schemaErr) {
+            console.error('SQL Error reading clients schema:', schemaErr.message);
+            return res.status(500).json({ error: 'Unable to inspect the clients table.' });
+        }
+
+        const availableColumns = new Set(schema.map(column => column.Field));
+        const insertFields = [];
+        const insertValues = [];
+
+        for (const { key, columns } of fields) {
+            const value = valuesByKey[key];
+            const column = columns.find(candidate => availableColumns.has(candidate));
+            if (!column) {
+                return res.status(500).json({ error: `The clients table is missing the required ${columns[0]} column.` });
+            }
+            insertFields.push(`\`${column}\``);
+            insertValues.push(key === 'copayTier' ? copayRates[value] : value);
+        }
+
+        const placeholders = insertFields.map(() => '?').join(', ');
+        const sql = `INSERT INTO clients (${insertFields.join(', ')}) VALUES (${placeholders})`;
+        pool.query(sql, insertValues, (insertErr, result) => {
+            if (insertErr) {
+                console.error('SQL Error inserting client:', insertErr.message);
+                if (insertErr.code === 'ER_DUP_ENTRY') {
+                    return res.status(409).json({ error: 'A client with one of these unique values already exists.' });
+                }
+                return res.status(500).json({ error: 'Unable to save client. Check the database constraints and try again.' });
+            }
+            res.status(201).json({ id: result.insertId });
+        });
     });
 });
 
@@ -76,7 +190,7 @@ app.get('/api/bookings', (req, res) => {
     });
 });
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 const HOST = '0.0.0.0';
 
 app.listen(PORT, HOST, () => {

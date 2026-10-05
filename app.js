@@ -3,6 +3,10 @@ const { createApp, ref, computed, onMounted } = Vue;
 export function initApp() {
     createApp({
         setup() {
+            const apiHost = window.location.hostname || 'localhost';
+            const apiProtocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+            const apiBaseUrl = `${apiProtocol}//${apiHost}:3000`;
+
             const allClients = ref([]);
             const allBookings = ref([]);
             const selectedClient = ref(null);
@@ -20,6 +24,11 @@ export function initApp() {
             
             const addBookingModal = ref(false);
             const bookingMode = ref('single');
+            const addClientModal = ref(false);
+            const isSavingClient = ref(false);
+            const addClientError = ref('');
+            const addClientNotice = ref('');
+            const newClient = ref({});
             
             const newBooking = ref({
                 date: '2026-10-01',
@@ -33,11 +42,17 @@ export function initApp() {
             // Fetch data from Node.js backend API with safety checks
             const fetchData = async () => {
                 try {
-                    const clientRes = await fetch('http://localhost:3000/api/clients');
+                    const clientRes = await fetch(`${apiBaseUrl}/api/clients`);
+                    if (!clientRes.ok) {
+                        throw new Error(`Client API returned HTTP ${clientRes.status}`);
+                    }
                     const clientData = await clientRes.json();
                     allClients.value = Array.isArray(clientData) ? clientData : [];
                     
-                    const bookingRes = await fetch('http://localhost:3000/api/bookings');
+                    const bookingRes = await fetch(`${apiBaseUrl}/api/bookings`);
+                    if (!bookingRes.ok) {
+                        throw new Error(`Booking API returned HTTP ${bookingRes.status}`);
+                    }
                     const bookingData = await bookingRes.json();
                     allBookings.value = Array.isArray(bookingData) ? bookingData : [];
                 } catch (err) {
@@ -111,6 +126,62 @@ export function initApp() {
                 if (found) selectedClient.value = found;
             };
 
+            const openAddClientModal = () => {
+                newClient.value = {
+                    clientId: '',
+                    patientId: '',
+                    voucherNo: '',
+                    hkid: '',
+                    nameCn: '',
+                    nameEn: '',
+                    copayTier: 'Cat I',
+                    pic: picOptions[0],
+                    adminClientName: '',
+                    district: '',
+                    address: '',
+                    telephone: '',
+                };
+                addClientError.value = '';
+                addClientNotice.value = '';
+                addClientModal.value = true;
+            };
+
+            const saveNewClient = async () => {
+                isSavingClient.value = true;
+                addClientError.value = '';
+                try {
+                    const clientDetails = { ...newClient.value };
+                    delete clientDetails.pic;
+                    const res = await fetch(`${apiBaseUrl}/api/clients`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(clientDetails)
+                    });
+                    const responseText = await res.text();
+                    let result;
+                    try {
+                        result = responseText ? JSON.parse(responseText) : {};
+                    } catch {
+                        if (res.status === 404) {
+                            throw new Error('Client API returned HTTP 404. Restart or redeploy the backend so it loads the POST /api/clients route.');
+                        }
+                        throw new Error(`Client API returned HTTP ${res.status} with a non-JSON response.`);
+                    }
+                    if (!res.ok) {
+                        throw new Error(result.error || `Client API returned HTTP ${res.status}`);
+                    }
+                    addClientModal.value = false;
+                    currentPage.value = 1;
+                    addClientNotice.value = '個案已成功新增。';
+                    await fetchData();
+                } catch (err) {
+                    console.error('Error adding client:', err);
+                    addClientError.value = err.message || 'Unable to save client.';
+                } finally {
+                    isSavingClient.value = false;
+                }
+            };
+
             const openBookingModal = () => {
                 addBookingModal.value = true;
             };
@@ -118,7 +189,7 @@ export function initApp() {
             const saveBooking = async () => {
                 if (!selectedClient.value) return;
                 try {
-                    const res = await fetch('http://localhost:3000/api/bookings', {
+                    const res = await fetch(`${apiBaseUrl}/api/bookings`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -128,10 +199,11 @@ export function initApp() {
                             remarks: `${newBooking.value.serviceName} - ${newBooking.value.providerName}`
                         })
                     });
-                    if (res.ok) {
-                        addBookingModal.value = false;
-                        fetchData(); // Refresh data
+                    if (!res.ok) {
+                        throw new Error(`Booking API returned HTTP ${res.status}`);
                     }
+                    addBookingModal.value = false;
+                    fetchData(); // Refresh data
                 } catch (err) {
                     console.error('Error saving booking:', err);
                 }
@@ -155,6 +227,9 @@ export function initApp() {
                 clientsOfCurrentPic, otherClients, switchWorkspaceClient,
                 addBookingModal, bookingMode, newBooking,
                 openBookingModal, saveBooking, removeBooking, printWindow,
+                addClientModal, newClient, isSavingClient, addClientError,
+                addClientNotice,
+                openAddClientModal, saveNewClient,
                 currentClientTotalFee: ref(0), currentClientTotalHours: ref(0),
                 currentClientTotalSessions: ref(0), currentClientBookings: ref([]),
                 workspaceTabs: [

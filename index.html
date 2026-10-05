@@ -122,7 +122,15 @@
                             </h2>
                             <p class="text-xs text-slate-500 mt-0.5">點擊列表「管理行程」即可進入個人工作區，進行 Form 7 報表及月曆排班</p>
                         </div>
+                        <button @click="openAddClientModal" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition flex items-center gap-2">
+                            <i class="fa-solid fa-user-plus"></i>
+                            新增個案
+                        </button>
                     </div>
+                </div>
+
+                <div v-if="addClientNotice" role="status" class="mx-5 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                    {{ addClientNotice }}
                 </div>
 
                 <div class="overflow-x-auto">
@@ -133,10 +141,10 @@
                                 <th class="p-3.5">社區券編號</th>
                                 <th class="p-3.5">長者姓名 (中/英)</th>
                                 <th class="p-3.5">HKID</th>
-                                <th class="p-3.5">責任人員 (PIC)</th>
+                                <th class="p-3.5">管理個案名稱</th>
                                 <th class="p-3.5">共同付款級別</th>
                                 <th class="p-3.5">服務地區</th>
-                                <th class="p-3.5 text-center">狀態</th>
+                                <th class="p-3.5">病人編號</th>
                                 <th class="p-3.5 text-center">操作</th>
                             </tr>
                         </thead>
@@ -149,10 +157,10 @@
                                     <div class="text-[10px] text-slate-400 font-mono">{{ client.nameEn }}</div>
                                 </td>
                                 <td class="p-3.5 font-mono text-slate-600 font-medium">{{ client.hkid }}</td>
-                                <td class="p-3.5"><span class="px-2.5 py-1 rounded-lg text-[11px] font-black bg-blue-100 text-blue-900">{{ client.pic }}</span></td>
+                                <td class="p-3.5">{{ client.adminClientName }}</td>
                                 <td class="p-3.5 font-bold text-slate-800">{{ client.copayTier }}</td>
                                 <td class="p-3.5 text-slate-700 font-medium">{{ client.district }}</td>
-                                <td class="p-3.5 text-center"><span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">{{ client.status }}</span></td>
+                                <td class="p-3.5 font-mono text-slate-600">{{ client.patientId }}</td>
                                 <td class="p-3.5 text-center">
                                     <button @click="selectClient(client)" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs transition flex items-center space-x-1.5 mx-auto">
                                         <span>管理行程</span>
@@ -164,6 +172,72 @@
                     </table>
                 </div>
             </section>
+
+            <div v-if="addClientModal" class="fixed inset-0 z-50 bg-slate-950/60 p-4 flex items-center justify-center" @click.self="addClientModal = false">
+                <section role="dialog" aria-modal="true" aria-labelledby="add-client-title" class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                    <form @submit.prevent="saveNewClient">
+                        <div class="p-5 border-b border-slate-200 flex items-center justify-between">
+                            <div>
+                                <h2 id="add-client-title" class="text-lg font-black text-indigo-950">新增 CCSV 個案</h2>
+                                <p class="text-xs text-slate-500 mt-1">資料會新增至 clients 資料表</p>
+                            </div>
+                            <button type="button" @click="addClientModal = false" class="text-slate-400 hover:text-slate-700 p-2" aria-label="關閉">
+                                <i class="fa-solid fa-xmark text-lg"></i>
+                            </button>
+                        </div>
+                        <div class="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <label class="text-xs font-bold text-slate-700">個案編號 *
+                                <input v-model.trim="newClient.clientId" required pattern="P[0-9]{8}" title="格式：P加8位數字，例如 P00001234" placeholder="P00001234" maxlength="9" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            </label>
+                            <label class="text-xs font-bold text-slate-700">社區券編號 *
+                                <input v-model.trim="newClient.voucherNo" required pattern="CCSV-[0-9]{6}" title="格式：CCSV-加6位數字" placeholder="CCSV-123456" maxlength="11" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            </label>
+                            <label class="text-xs font-bold text-slate-700">病人編號 *
+                                <input v-model.trim="newClient.patientId" required pattern="P[0-9]{8}-[0-9]{4}" title="格式：個案編號加連字符及4位數字，例如 P00001234-0001" placeholder="P00001234-0001" maxlength="14" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            </label>
+                            <label class="text-xs font-bold text-slate-700">中文姓名 *
+                                <input v-model.trim="newClient.nameCn" required maxlength="100" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            </label>
+                            <label class="text-xs font-bold text-slate-700">英文姓名 *
+                                <input v-model.trim="newClient.nameEn" required maxlength="150" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            </label>
+                            <label class="text-xs font-bold text-slate-700">HKID *
+                                <input v-model.trim="newClient.hkid" required maxlength="30" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            </label>
+                            <label class="text-xs font-bold text-slate-700">責任人員 (PIC)
+                                <select v-model="newClient.pic" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <option v-for="pic in picOptions" :key="pic" :value="pic">{{ pic }}</option>
+                                </select>
+                                <span class="mt-1 block text-[10px] font-normal text-slate-500">PIC 欄位尚未加入資料庫，因此不會儲存。</span>
+                            </label>
+                            <label class="text-xs font-bold text-slate-700">共同付款百分比 *
+                                <select v-model="newClient.copayTier" required class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <option v-for="tier in ['Cat I', 'Cat II', 'Cat III', 'Cat IV', 'Cat V', 'Cat VI']" :key="tier" :value="tier">{{ tier }}</option>
+                                </select>
+                            </label>
+                            <label class="text-xs font-bold text-slate-700">管理個案名稱 *
+                                <input v-model.trim="newClient.adminClientName" required maxlength="150" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            </label>
+                            <label class="text-xs font-bold text-slate-700">服務地區 *
+                                <input v-model.trim="newClient.district" required maxlength="100" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            </label>
+                            <label class="text-xs font-bold text-slate-700">電話 *
+                                <input v-model.trim="newClient.telephone" required maxlength="50" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            </label>
+                            <label class="text-xs font-bold text-slate-700 sm:col-span-2">地址 *
+                                <textarea v-model.trim="newClient.address" required rows="2" maxlength="500" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-indigo-500"></textarea>
+                            </label>
+                            <p v-if="addClientError" role="alert" class="sm:col-span-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{{ addClientError }}</p>
+                        </div>
+                        <div class="px-5 pb-5 flex justify-end gap-3">
+                            <button type="button" @click="addClientModal = false" class="px-4 py-2 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-100">取消</button>
+                            <button type="submit" :disabled="isSavingClient" class="px-4 py-2 rounded-lg text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">
+                                {{ isSavingClient ? '儲存中...' : '儲存個案' }}
+                            </button>
+                        </div>
+                    </form>
+                </section>
+            </div>
         </main>
     </div>
 
