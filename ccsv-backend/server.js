@@ -60,15 +60,53 @@ const defaultBasicSettings = {
         { code: 'HP', name: 'HP', serviceProfessional: '輔助人員', serviceFee: 0, caregiverFee: 0, mealIncluded: false }
     ],
     caregivers: [],
+    mealCaregivers: [],
     holidays: []
 };
 
-const isTime = value => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+const isTime = value => typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(value);
+const timeMinutes = value => {
+    const [hours, minutes] = value.split(':').map(Number);
+    return hours * 60 + minutes;
+};
 const isDate = value => {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
     const [year, month, day] = value.split('-').map(Number);
     const parsed = new Date(Date.UTC(year, month - 1, day));
     return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
+};
+const normalizeMealOptions = (body, service) => {
+    const mealService = /meal|膳食|送餐|food service/i.test(`${service.code} ${service.name}`);
+    const mealCount = body.mealCount === undefined ? 1 : body.mealCount;
+    const softMeal = body.softMeal === undefined ? false : body.softMeal;
+    if (!Number.isInteger(mealCount) || mealCount < 1 || mealCount > 3 ||
+        typeof softMeal !== 'boolean') return null;
+    return {
+        mealCount: mealService ? mealCount : null,
+        softMeal: mealService && softMeal
+    };
+};
+const isDurationPricedService = serviceCode => ['PCW', 'HW'].includes(String(serviceCode || '').toUpperCase());
+const defaultDurationFees = () => Array.from({ length: 14 }, (_, index) => ({
+    hours: index + 1,
+    serviceFee: 0,
+    caregiverFee: 0
+}));
+const groupDurationFees = rows => {
+    const grouped = new Map();
+    for (const row of rows) {
+        const code = String(row.code).toUpperCase();
+        if (!grouped.has(code)) grouped.set(code, defaultDurationFees());
+        const hours = Number(row.hours);
+        if (hours >= 1 && hours <= 14 && Number.isInteger(hours)) {
+            grouped.get(code)[hours - 1] = {
+                hours,
+                serviceFee: Number(row.serviceFee),
+                caregiverFee: Number(row.caregiverFee || 0)
+            };
+        }
+    }
+    return grouped;
 };
 const normalizeBookingTimes = (body, service) => {
     const rawStartTime = String(body && body.startTime || '').replace('T', ' ');
@@ -110,9 +148,12 @@ const authorizeBasicSettings = (req, res) => {
 
 const validateBasicSettings = body => {
     if (!body || typeof body !== 'object' || Array.isArray(body) ||
-        !isTime(body.normalStart) || !isTime(body.normalEnd) || body.normalStart >= body.normalEnd ||
+        !isTime(body.normalStart) || !isTime(body.normalEnd) ||
+        timeMinutes(body.normalStart) >= timeMinutes(body.normalEnd) ||
         !Array.isArray(body.services) || !body.services.length ||
-        !Array.isArray(body.caregivers) || !Array.isArray(body.holidays)) {
+        !Array.isArray(body.caregivers) ||
+        (body.mealCaregivers !== undefined && !Array.isArray(body.mealCaregivers)) ||
+        !Array.isArray(body.holidays)) {
         return 'Basic settings have an invalid structure or normal service time.';
     }
     const serviceNames = new Set();
@@ -130,17 +171,47 @@ const validateBasicSettings = body => {
         if (serviceNames.has(service.name.trim())) return 'Service names must be unique.';
         if (serviceCodes.has(service.code.trim().toUpperCase())) return 'Service codes must be unique.';
         serviceNames.add(service.name.trim());
-        serviceCodes.add(service.code.trim().toUpperCase());
+        const code = service.code.trim().toUpperCase();
+        serviceCodes.add(code);
+        if (isDurationPricedService(code)) {
+            if (!Array.isArray(service.durationFees) || service.durationFees.length !== 14) {
+                return `${code} needs a service fee and caregiver fee for each duration from 1 to 14 hours.`;
+            }
+            const durations = new Set();
+            for (const tier of service.durationFees) {
+                if (!tier || !Number.isInteger(tier.hours) || tier.hours < 1 || tier.hours > 14 ||
+                    durations.has(tier.hours) ||
+                    !Number.isFinite(Number(tier.serviceFee)) || Number(tier.serviceFee) < 0 ||
+                    !Number.isFinite(Number(tier.caregiverFee)) || Number(tier.caregiverFee) < 0) {
+                    return `${code} duration fees need unique 1–14 hour rows with non-negative service and caregiver fees.`;
+                }
+                durations.add(tier.hours);
+            }
+            if (durations.size !== 14) return `${code} needs all duration fee rows from 1 to 14 hours.`;
+        }
     }
     const caregiverCodes = new Set();
     for (const caregiver of body.caregivers) {
         if (!caregiver || typeof caregiver.code !== 'string' || !caregiver.code.trim() ||
-            typeof caregiver.name !== 'string' || !caregiver.name.trim() ||
+            caregiver.code.trim().length > 50 ||
+            typeof caregiver.name !== 'string' || !caregiver.name.trim() || caregiver.name.trim().length > 150 ||
             !Number.isFinite(Number(caregiver.hourlyFee)) || Number(caregiver.hourlyFee) < 0) {
-            return 'Each caregiver needs a code, name, and non-negative hourly fee.';
+            return 'Each caregiver needs a code (up to 50 characters), name (up to 150 characters), and non-negative hourly fee.';
         }
-        if (caregiverCodes.has(caregiver.code.trim())) return 'Caregiver codes must be unique.';
-        caregiverCodes.add(caregiver.code.trim());
+        const code = caregiver.code.trim().toUpperCase();
+        if (caregiverCodes.has(code)) return 'Caregiver codes must be unique.';
+        caregiverCodes.add(code);
+    }
+    const mealCaregiverCodes = new Set();
+    for (const caregiver of body.mealCaregivers || []) {
+        if (!caregiver || typeof caregiver.code !== 'string' || !caregiver.code.trim() ||
+            caregiver.code.trim().length > 50 ||
+            typeof caregiver.name !== 'string' || !caregiver.name.trim() || caregiver.name.trim().length > 150) {
+            return 'Each meal caregiver needs a code (up to 50 characters) and name (up to 150 characters).';
+        }
+        const code = caregiver.code.trim().toUpperCase();
+        if (mealCaregiverCodes.has(code)) return 'Meal caregiver codes must be unique.';
+        mealCaregiverCodes.add(code);
     }
     if (!body.holidays.every(isDate)) return 'Holiday dates must use YYYY-MM-DD format.';
     return null;
@@ -314,6 +385,8 @@ app.get('/api/bookings', (req, res) => {
             caregiverCode: b.caregiver_id || b.caregiver_code || '',
             caregiverName: b.caregiver_name || '',
             includesMeal: Boolean(b.includes_meal),
+            mealCount: b.meal_count === null || b.meal_count === undefined ? null : Number(b.meal_count),
+            softMeal: Boolean(b.soft_meal),
             isOvertime: b.is_overtime || b.isOvertime || 0,
             remarks: b.remarks || ''
         }));
@@ -362,6 +435,8 @@ app.post('/api/bookings', (req, res) => {
             }
             if (!services.length) return res.status(400).json({ error: 'Selected service is not configured in service_fees.' });
             const service = services[0];
+            const mealOptions = normalizeMealOptions(body, service);
+            if (!mealOptions) return res.status(400).json({ error: 'Meal count must be 1, 2, or 3 and softMeal must be true or false.' });
             const bookingTimes = normalizeBookingTimes(body, service);
             if (!bookingTimes) {
                 return res.status(400).json({ error: 'A valid service date and end time after start time are required.' });
@@ -369,11 +444,12 @@ app.post('/api/bookings', (req, res) => {
             const { startTime, endTime } = bookingTimes;
             const sql = `INSERT INTO bookings
                 (client_id, caregiver_id, service_type_id, start_time, end_time, service_type, provider_type,
-                 caregiver_code, caregiver_name, remarks, includes_meal)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                 caregiver_code, caregiver_name, remarks, includes_meal, meal_count, soft_meal)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
             const params = [
                 clientId, values.caregiverCode, service.code, startTime, endTime, service.name, service.name,
-                values.caregiverCode, values.caregiverName, values.remarks, body.includesMeal ? 1 : 0
+                values.caregiverCode, values.caregiverName, values.remarks, body.includesMeal ? 1 : 0,
+                mealOptions.mealCount, mealOptions.softMeal ? 1 : 0
             ];
             pool.query(sql, params, (insertErr, result) => {
                 if (insertErr) {
@@ -398,6 +474,8 @@ app.post('/api/bookings', (req, res) => {
                         caregiverCode: values.caregiverCode,
                         caregiverName: values.caregiverName,
                         includesMeal: Boolean(body.includesMeal),
+                        mealCount: mealOptions.mealCount,
+                        softMeal: mealOptions.softMeal,
                         remarks: values.remarks
                     }
                 });
@@ -455,6 +533,8 @@ app.put('/api/bookings/:id', (req, res) => {
                 }
                 if (!services.length) return res.status(400).json({ error: 'Selected service is not configured in service_fees.' });
                 const service = services[0];
+                const mealOptions = normalizeMealOptions(body, service);
+                if (!mealOptions) return res.status(400).json({ error: 'Meal count must be 1, 2, or 3 and softMeal must be true or false.' });
                 const bookingTimes = normalizeBookingTimes(body, service);
                 if (!bookingTimes) {
                     return res.status(400).json({ error: 'A valid service date and end time after start time are required.' });
@@ -463,12 +543,12 @@ app.put('/api/bookings/:id', (req, res) => {
                 const sql = `UPDATE bookings
                     SET client_id = ?, caregiver_id = ?, service_type_id = ?, start_time = ?, end_time = ?,
                         service_type = ?, provider_type = ?, caregiver_code = ?, caregiver_name = ?,
-                        remarks = ?, includes_meal = ?
+                        remarks = ?, includes_meal = ?, meal_count = ?, soft_meal = ?
                     WHERE id = ?`;
                 const params = [
                     clientId, values.caregiverCode, service.code, startTime, endTime, service.name, service.name,
                     values.caregiverCode, values.caregiverName, values.remarks,
-                    body.includesMeal ? 1 : 0, req.params.id
+                    body.includesMeal ? 1 : 0, mealOptions.mealCount, mealOptions.softMeal ? 1 : 0, req.params.id
                 ];
                 pool.query(sql, params, updateErr => {
                     if (updateErr) {
@@ -493,6 +573,8 @@ app.put('/api/bookings/:id', (req, res) => {
                             caregiverCode: values.caregiverCode,
                             caregiverName: values.caregiverName,
                             includesMeal: Boolean(body.includesMeal),
+                            mealCount: mealOptions.mealCount,
+                            softMeal: mealOptions.softMeal,
                             remarks: values.remarks
                         }
                     });
@@ -551,136 +633,216 @@ app.put('/api/service-colors/:code', (req, res) => {
     );
 });
 
-app.get('/api/services', (req, res) => {
-    pool.query('SELECT service_code AS code, service_name AS name, service_professional AS serviceProfessional, service_fee AS serviceFee, meal_included AS mealIncluded FROM service_fees ORDER BY display_order, service_code', (err, rows) => {
-        if (err) {
-            console.error('SQL Error reading public service options:', err.message);
-            return res.status(500).json({ error: 'Unable to load public service options and fees. Confirm service_fees exists and run service-fees-schema.sql.' });
-        }
+app.get('/api/services', async (req, res) => {
+    try {
+        const [rows, durationRows] = await Promise.all([
+            queryRows(pool, 'SELECT service_code AS code, service_name AS name, service_professional AS serviceProfessional, service_fee AS serviceFee, meal_included AS mealIncluded FROM service_fees ORDER BY display_order, service_code'),
+            queryRows(pool, 'SELECT service_code AS code, duration_hours AS hours, service_fee AS serviceFee FROM service_duration_fees ORDER BY service_code, duration_hours')
+        ]);
+        const durationFeesByCode = groupDurationFees(durationRows);
         res.json(rows.map(service => ({
             ...service,
             serviceFee: Number(service.serviceFee),
-            mealIncluded: Boolean(service.mealIncluded)
+            mealIncluded: Boolean(service.mealIncluded),
+            durationFees: (durationFeesByCode.get(String(service.code).toUpperCase()) || (
+                isDurationPricedService(service.code) ? defaultDurationFees() : []
+            )).map(({ hours, serviceFee }) => ({ hours, serviceFee }))
         })));
+    } catch (error) {
+        console.error('SQL Error reading public service options:', error.message);
+        res.status(500).json({ error: 'Unable to load public service options and fees. Run service-fees-schema.sql in ccsv_system.' });
+    }
+});
+
+app.get('/api/calendar-holidays', async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+        const holidayRows = await queryRows(pool,
+            "SELECT DATE_FORMAT(holiday_date, '%Y-%m-%d') AS holiday FROM basic_holidays ORDER BY holiday_date"
+        );
+        res.json(holidayRows.map(row => row.holiday));
+    } catch (error) {
+        console.error('SQL Error reading calendar holidays:', error.message);
+        res.status(500).json({ error: 'Unable to load calendar holidays. Run basic-settings-normalized-schema.sql in ccsv_system.' });
+    }
+});
+
+const queryRows = (executor, sql, params = []) => new Promise((resolve, reject) => {
+    executor.query(sql, params, (error, rows) => {
+        if (error) return reject(error);
+        resolve(rows);
     });
 });
 
-app.get('/api/basic', (req, res) => {
+app.get('/api/basic', async (req, res) => {
     if (!authorizeBasicSettings(req, res)) return;
-    pool.query('SELECT setting_value FROM system_settings WHERE setting_key = ?', ['basic'], (settingsErr, settingsRows) => {
-        if (settingsErr) {
-            console.error('SQL Error reading Basic settings:', settingsErr.message);
-            return res.status(500).json({ error: 'Unable to load Basic settings. Confirm the system_settings table exists.' });
-        }
-        pool.query('SELECT service_code AS code, service_name AS name, service_professional AS serviceProfessional, service_fee AS serviceFee, caregiver_fee AS caregiverFee, meal_included AS mealIncluded FROM service_fees ORDER BY display_order, service_code', (feesErr, feeRows) => {
-            if (feesErr) {
-                console.error('SQL Error reading Basic service fees:', feesErr.message);
-                return res.status(500).json({ error: 'Unable to load service fees. Run service-fees-schema.sql in ccsv_system.' });
-            }
-            let settings = defaultBasicSettings;
-            if (settingsRows.length) {
-                try {
-                    settings = { ...defaultBasicSettings, ...JSON.parse(settingsRows[0].setting_value) };
-                } catch (parseErr) {
-                    console.error('Invalid Basic settings JSON in database:', parseErr.message);
-                    return res.status(500).json({ error: 'Stored Basic settings are invalid JSON.' });
-                }
-            }
-            settings.services = feeRows.map(service => ({
-                code: service.code,
-                name: service.name,
-                serviceProfessional: service.serviceProfessional || '',
+    try {
+        const [settingRows, serviceRows, durationFeeRows, caregiverRows, mealCaregiverRows, holidayRows] = await Promise.all([
+            queryRows(pool, "SELECT TIME_FORMAT(normal_start, '%H:%i') AS normalStart, TIME_FORMAT(normal_end, '%H:%i') AS normalEnd FROM system_settings WHERE settings_id = 1"),
+            queryRows(pool, 'SELECT service_code AS code, service_name AS name, service_professional AS serviceProfessional, service_fee AS serviceFee, caregiver_fee AS caregiverFee, meal_included AS mealIncluded FROM service_fees ORDER BY display_order, service_code'),
+            queryRows(pool, 'SELECT service_code AS code, duration_hours AS hours, service_fee AS serviceFee, caregiver_fee AS caregiverFee FROM service_duration_fees ORDER BY service_code, duration_hours'),
+            queryRows(pool, 'SELECT caregiver_code AS code, caregiver_name AS name, hourly_fee AS hourlyFee FROM basic_caregivers ORDER BY display_order, caregiver_code'),
+            queryRows(pool, 'SELECT caregiver_code AS code, caregiver_name AS name FROM basic_meal_caregivers ORDER BY display_order, caregiver_code'),
+            queryRows(pool, "SELECT DATE_FORMAT(holiday_date, '%Y-%m-%d') AS holiday FROM basic_holidays ORDER BY holiday_date")
+        ]);
+        const serviceSettings = settingRows[0] || {
+            normalStart: defaultBasicSettings.normalStart,
+            normalEnd: defaultBasicSettings.normalEnd
+        };
+        const durationFeesByCode = groupDurationFees(durationFeeRows);
+        res.json({
+            ...serviceSettings,
+            services: serviceRows.map(service => ({
+                ...service,
                 serviceFee: Number(service.serviceFee),
                 caregiverFee: Number(service.caregiverFee),
-                mealIncluded: Boolean(service.mealIncluded)
-            }));
-            res.json(settings);
+                mealIncluded: Boolean(service.mealIncluded),
+                durationFees: durationFeesByCode.get(String(service.code).toUpperCase()) || (
+                    isDurationPricedService(service.code) ? defaultDurationFees() : []
+                )
+            })),
+            caregivers: caregiverRows.map(caregiver => ({
+                ...caregiver,
+                hourlyFee: Number(caregiver.hourlyFee)
+            })),
+            mealCaregivers: mealCaregiverRows,
+            holidays: holidayRows.map(row => row.holiday)
         });
-    });
+    } catch (error) {
+        console.error('SQL Error reading normalized Basic settings:', error.message);
+        res.status(500).json({
+            error: 'Unable to load Basic settings. Run basic-settings-normalized-schema.sql and service-fees-schema.sql in ccsv_system.'
+        });
+    }
 });
 
-app.put('/api/basic', (req, res) => {
+app.put('/api/basic', async (req, res) => {
     if (!authorizeBasicSettings(req, res)) return;
     const validationError = validateBasicSettings(req.body);
     if (validationError) return res.status(400).json({ error: validationError });
-    const settingsJson = JSON.stringify({
-        normalStart: req.body.normalStart,
-        normalEnd: req.body.normalEnd,
-        services: req.body.services.map(service => ({
-            code: service.code.trim().toUpperCase(),
-            name: service.name.trim(),
-            serviceProfessional: typeof service.serviceProfessional === 'string' ? service.serviceProfessional.trim() : '',
-            serviceFee: Number(service.serviceFee),
-            caregiverFee: Number(service.caregiverFee),
-            mealIncluded: service.mealIncluded
-        })),
-        caregivers: req.body.caregivers.map(caregiver => ({
-            code: caregiver.code.trim(),
-            name: caregiver.name.trim(),
-            hourlyFee: Number(caregiver.hourlyFee)
-        })),
-        holidays: [...new Set(req.body.holidays)]
-    });
-    pool.getConnection((connectionErr, connection) => {
-        if (connectionErr) {
-            console.error('SQL Error opening transaction for Basic settings:', connectionErr.message);
-            return res.status(500).json({ error: 'Unable to save Basic settings.' });
-        }
-        const fail = (err, message) => {
-            console.error('SQL Error saving Basic settings:', err.message);
-            connection.rollback(() => {
-                connection.release();
-                res.status(500).json({ error: message });
-            });
-        };
-        connection.beginTransaction(transactionErr => {
-            if (transactionErr) {
-                console.error('SQL Error starting Basic settings transaction:', transactionErr.message);
-                connection.release();
-                return res.status(500).json({ error: 'Unable to start Basic settings save.' });
-            }
-            connection.query('DELETE FROM service_fees', deleteErr => {
-                if (deleteErr) {
-                    return fail(deleteErr, 'Unable to save service fees. Confirm the API database user can update service_fees.');
-                }
-                const feeRows = req.body.services.map((service, index) => [
-                    service.code.trim().toUpperCase(),
-                    service.name.trim(),
-                    typeof service.serviceProfessional === 'string' ? service.serviceProfessional.trim() : '',
-                    Number(service.serviceFee),
-                    Number(service.caregiverFee),
-                    service.mealIncluded ? 1 : 0,
-                    index
-                ]);
-                connection.query(
-                    'INSERT INTO service_fees (service_code, service_name, service_professional, service_fee, caregiver_fee, meal_included, display_order) VALUES ?',
-                    [feeRows],
-                    insertErr => {
-                        if (insertErr) {
-                            return fail(insertErr, 'Unable to save service fees. Confirm service-fees-schema.sql has been applied.');
-                        }
-                        connection.query(
-                            `INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?)
-                             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
-                            ['basic', settingsJson],
-                            settingsErr => {
-                                if (settingsErr) {
-                                    return fail(settingsErr, 'Unable to save Basic settings. Confirm the API database user can write system_settings.');
-                                }
-                                connection.commit(commitErr => {
-                                    if (commitErr) {
-                                        return fail(commitErr, 'Unable to finish saving Basic settings.');
-                                    }
-                                    connection.release();
-                                    res.json(JSON.parse(settingsJson));
-                                });
-                            }
-                        );
-                    }
-                );
+
+    const services = req.body.services.map(service => ({
+        code: service.code.trim().toUpperCase(),
+        name: service.name.trim(),
+        serviceProfessional: typeof service.serviceProfessional === 'string' ? service.serviceProfessional.trim() : '',
+        serviceFee: Number(service.serviceFee),
+        caregiverFee: Number(service.caregiverFee),
+        mealIncluded: service.mealIncluded,
+        durationFees: isDurationPricedService(service.code)
+            ? [...service.durationFees].sort((a, b) => a.hours - b.hours).map(tier => ({
+                hours: tier.hours,
+                serviceFee: Number(tier.serviceFee),
+                caregiverFee: Number(tier.caregiverFee)
+            }))
+            : []
+    }));
+    const caregivers = req.body.caregivers.map(caregiver => ({
+        code: caregiver.code.trim(),
+        name: caregiver.name.trim(),
+        hourlyFee: Number(caregiver.hourlyFee)
+    }));
+    const mealCaregivers = (req.body.mealCaregivers || []).map(caregiver => ({
+        code: caregiver.code.trim(),
+        name: caregiver.name.trim()
+    }));
+    const holidays = [...new Set(req.body.holidays)];
+    let connection;
+    try {
+        connection = await new Promise((resolve, reject) => {
+            pool.getConnection((error, acquiredConnection) => {
+                if (error) return reject(error);
+                resolve(acquiredConnection);
             });
         });
-    });
+        await new Promise((resolve, reject) => {
+            connection.beginTransaction(error => error ? reject(error) : resolve());
+        });
+
+        await queryRows(connection,
+            `INSERT INTO system_settings (settings_id, normal_start, normal_end) VALUES (1, ?, ?)
+             ON DUPLICATE KEY UPDATE normal_start = VALUES(normal_start), normal_end = VALUES(normal_end)`,
+            [req.body.normalStart, req.body.normalEnd]
+        );
+
+        const serviceRows = services.map((service, index) => [
+            service.code, service.name, service.serviceProfessional, service.serviceFee,
+            service.caregiverFee, service.mealIncluded ? 1 : 0, index
+        ]);
+        await queryRows(connection,
+            `INSERT INTO service_fees
+                (service_code, service_name, service_professional, service_fee, caregiver_fee, meal_included, display_order)
+             VALUES ?
+             ON DUPLICATE KEY UPDATE
+                service_name = VALUES(service_name),
+                service_professional = VALUES(service_professional),
+                service_fee = VALUES(service_fee),
+                caregiver_fee = VALUES(caregiver_fee),
+                meal_included = VALUES(meal_included),
+                display_order = VALUES(display_order)`,
+            [serviceRows]
+        );
+        await queryRows(connection, 'DELETE FROM service_fees WHERE service_code NOT IN (?)', [
+            services.map(service => service.code)
+        ]);
+        const durationPricedServices = services.filter(service => isDurationPricedService(service.code));
+        const durationFeeRows = durationPricedServices.flatMap(service => service.durationFees.map(tier => [
+            service.code, tier.hours, tier.serviceFee, tier.caregiverFee
+        ]));
+        await queryRows(connection, 'DELETE FROM service_duration_fees WHERE service_code IN (?)', [
+            durationPricedServices.map(service => service.code)
+        ]);
+        if (durationFeeRows.length) {
+            await queryRows(connection,
+                'INSERT INTO service_duration_fees (service_code, duration_hours, service_fee, caregiver_fee) VALUES ?',
+                [durationFeeRows]
+            );
+        }
+
+        await queryRows(connection, 'DELETE FROM basic_caregivers');
+        if (caregivers.length) {
+            await queryRows(connection,
+                'INSERT INTO basic_caregivers (caregiver_code, caregiver_name, hourly_fee, display_order) VALUES ?',
+                [caregivers.map((caregiver, index) => [caregiver.code, caregiver.name, caregiver.hourlyFee, index])]
+            );
+        }
+
+        await queryRows(connection, 'DELETE FROM basic_meal_caregivers');
+        if (mealCaregivers.length) {
+            await queryRows(connection,
+                'INSERT INTO basic_meal_caregivers (caregiver_code, caregiver_name, display_order) VALUES ?',
+                [mealCaregivers.map((caregiver, index) => [caregiver.code, caregiver.name, index])]
+            );
+        }
+
+        await queryRows(connection, 'DELETE FROM basic_holidays');
+        if (holidays.length) {
+            await queryRows(connection, 'INSERT INTO basic_holidays (holiday_date) VALUES ?', [
+                holidays.map(holiday => [holiday])
+            ]);
+        }
+
+        await new Promise((resolve, reject) => {
+            connection.commit(error => error ? reject(error) : resolve());
+        });
+        res.json({
+            normalStart: req.body.normalStart,
+            normalEnd: req.body.normalEnd,
+            services,
+            caregivers,
+            mealCaregivers,
+            holidays
+        });
+    } catch (error) {
+        console.error('SQL Error saving normalized Basic settings:', error.message);
+        if (connection) {
+            await new Promise(resolve => connection.rollback(() => resolve()));
+        }
+        res.status(500).json({
+            error: `Unable to save Basic settings. Run basic-settings-normalized-schema.sql and service-fees-schema.sql in ccsv_system. ${error.message}`
+        });
+    } finally {
+        if (connection) connection.release();
+    }
 });
 
 const PORT = Number(process.env.PORT || 3000);

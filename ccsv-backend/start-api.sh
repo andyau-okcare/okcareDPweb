@@ -10,6 +10,22 @@ echo "=== CCSV API startup: $(date) ==="
 echo "Backend directory: $SCRIPT_DIR"
 echo "Database config file: $ENV_FILE"
 
+# =====================================================================
+# NEW: Find and terminate the old running API instance before continuing
+# =====================================================================
+echo "Checking for old running instances of server.js..."
+# Find PIDs matching 'node server.js' that belong to the current directory, excluding this script
+OLD_PIDS=$(pgrep -f "server.js" | grep -v "$$" || true)
+
+if [ -n "$OLD_PIDS" ]; then
+    echo "Found old API running process(es): $OLD_PIDS. Terminating..."
+    kill -9 $OLD_PIDS 2>/dev/null || true
+    sleep 2
+else
+    echo "No old instance found. Proceeding normally."
+fi
+# =====================================================================
+
 if [ ! -r "$ENV_FILE" ]; then
     echo "Cannot read database configuration file: $ENV_FILE" >&2
     exit 1

@@ -40,6 +40,19 @@ DEALLOCATE PREPARE service_professional_statement;
 ALTER TABLE `service_fees`
   MODIFY COLUMN `service_professional` VARCHAR(120) NOT NULL DEFAULT '';
 
+CREATE TABLE IF NOT EXISTS `service_duration_fees` (
+  `service_code` VARCHAR(20) NOT NULL,
+  `duration_hours` TINYINT UNSIGNED NOT NULL,
+  `service_fee` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  `caregiver_fee` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  PRIMARY KEY (`service_code`, `duration_hours`),
+  CONSTRAINT `fk_service_duration_fees_service`
+    FOREIGN KEY (`service_code`) REFERENCES `service_fees` (`service_code`)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB
+  DEFAULT CHARSET=utf8mb4
+  COLLATE=utf8mb4_unicode_ci;
+
 INSERT INTO `service_fees`
   (`service_code`, `service_name`, `service_professional`, `service_fee`, `caregiver_fee`, `meal_included`, `display_order`)
 VALUES
@@ -61,6 +74,22 @@ ON DUPLICATE KEY UPDATE
   `meal_included` = VALUES(`meal_included`),
   `display_order` = VALUES(`display_order`);
 
+INSERT IGNORE INTO `service_duration_fees`
+  (`service_code`, `duration_hours`, `service_fee`, `caregiver_fee`)
+SELECT `service_code`, durations.`duration_hours`, 0.00, 0.00
+FROM `service_fees`
+CROSS JOIN (
+  SELECT 1 AS `duration_hours` UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+  UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8
+  UNION ALL SELECT 9 UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12
+  UNION ALL SELECT 13 UNION ALL SELECT 14
+) AS durations
+WHERE UPPER(`service_fees`.`service_code`) IN ('PCW', 'HW');
+
 SELECT `service_code`, `service_name`, `service_professional`, `service_fee`, `caregiver_fee`, `meal_included`
 FROM `service_fees`
 ORDER BY `display_order`, `service_code`;
+
+SELECT `service_code`, `duration_hours`, `service_fee`, `caregiver_fee`
+FROM `service_duration_fees`
+ORDER BY `service_code`, `duration_hours`;

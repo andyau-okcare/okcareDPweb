@@ -83,8 +83,29 @@ const defaultBasicSettings = () => ({
         { code: 'HP', name: 'HP', serviceProfessional: '輔助人員', serviceFee: 0, caregiverFee: 0, mealIncluded: false }
     ],
     caregivers: [],
+    mealCaregivers: [],
     holidays: []
 });
+
+const defaultDurationFees = () => Array.from({ length: 14 }, (_, index) => ({
+    hours: index + 1,
+    serviceFee: 0,
+    caregiverFee: 0
+}));
+
+const isDurationPricedService = service => ['PCW', 'HW'].includes(String(service && service.code || '').toUpperCase());
+const ensureDurationFees = service => {
+    if (!isDurationPricedService(service)) return;
+    const currentFees = Array.isArray(service.durationFees) ? service.durationFees : [];
+    service.durationFees = defaultDurationFees().map(defaultTier => {
+        const savedTier = currentFees.find(tier => Number(tier.hours) === defaultTier.hours);
+        return savedTier ? {
+            hours: defaultTier.hours,
+            serviceFee: Number(savedTier.serviceFee) || 0,
+            caregiverFee: Number(savedTier.caregiverFee) || 0
+        } : defaultTier;
+    });
+};
 
 const formatLocalDate = (date) =>
     `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -120,6 +141,8 @@ const emptyBooking = () => ({
     caregiverName: '',
     remarks: '',
     includesMeal: false,
+    mealCount: 1,
+    softMeal: false,
     repeatFrequency: 'none',
     repeatUntil: ''
 });
@@ -176,6 +199,7 @@ export function initApp() {
             const bookingError = ref('');
             const isSavingBooking = ref(false);
             const basicError = ref('');
+            const basicNotice = ref('');
             const basicKey = ref('');
             const basicPasswordModal = ref(false);
             const basicUnlocked = ref(false);
@@ -187,6 +211,7 @@ export function initApp() {
 
             const request = async (path, options = {}) => {
                 const response = await fetch(`${apiBaseUrl}${path}`, {
+                    cache: 'no-store',
                     ...options,
                     headers: {
                         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
@@ -262,7 +287,10 @@ export function initApp() {
                                 serviceFee: service.serviceFee === undefined || service.serviceFee === null
                                     ? undefined
                                     : Number(service.serviceFee),
-                                caregiverFee: current ? current.caregiverFee : 0
+                                caregiverFee: current ? current.caregiverFee : 0,
+                                durationFees: Array.isArray(service.durationFees) && service.durationFees.length
+                                    ? service.durationFees
+                                    : isDurationPricedService(service) ? defaultDurationFees() : []
                             };
                         });
                         if (!services.some(service => service.name === newBooking.value.serviceType)) {
@@ -274,6 +302,17 @@ export function initApp() {
                     console.error('Failed to load configured service options:', error);
                 } finally {
                     isLoadingData.value = false;
+                }
+                try {
+                    const holidays = await request('/api/calendar-holidays');
+                    if (!Array.isArray(holidays) || !holidays.every(holiday =>
+                        typeof holiday === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(holiday)
+                    )) {
+                        throw new Error('Calendar holidays response has an invalid format.');
+                    }
+                    settings.value.holidays = holidays;
+                } catch (error) {
+                    console.error('Failed to load configured calendar holidays:', error);
                 }
             };
 
@@ -376,6 +415,13 @@ export function initApp() {
                 ];
             });
 
+            const isCalendarDayRed = day => {
+                const [year, month] = serviceMonth.value.split('-').map(Number);
+                const date = new Date(year, month - 1, day);
+                const dateText = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                return date.getDay() === 0 || (settings.value.holidays || []).includes(dateText);
+            };
+
             const bookingsForDay = (day, mealOnly = false) => {
                 if (!day) return [];
                 const date = `${serviceMonth.value}-${String(day).padStart(2, '0')}`;
@@ -404,16 +450,35 @@ export function initApp() {
 
             const bookingFinancials = booking => {
                 const service = serviceConfigForBooking(booking);
-                const rate = service ? Number(service.serviceFee) : Number.NaN;
-                const copayRate = serviceAgreementCopayRates[selectedClient.value && selectedClient.value.copayTier];
                 const totalHours = splitHours(booking).total;
-                const serviceFee = Number.isFinite(rate) && rate >= 0 ? rate * totalHours : null;
+                const serviceFee = serviceFeeForHours(service, totalHours);
+                const copayRate = serviceAgreementCopayRates[selectedClient.value && selectedClient.value.copayTier];
                 return {
                     serviceFee,
                     copayFee: serviceFee !== null && Number.isFinite(copayRate)
                         ? serviceFee * copayRate
                         : null
                 };
+            };
+
+            const serviceFeeForHours = (service, hours) => {
+                if (!service) return null;
+                if (isDurationPricedService(service)) {
+                    if (!Number.isFinite(hours) || hours < 1 || hours > 14 ||
+                        !Array.isArray(service.durationFees) || service.durationFees.length !== 14) return null;
+                    const lowerHours = Math.floor(hours);
+                    const upperHours = Math.ceil(hours);
+                    const lowerTier = service.durationFees.find(tier => Number(tier.hours) === lowerHours);
+                    const upperTier = service.durationFees.find(tier => Number(tier.hours) === upperHours);
+                    if (!lowerTier || !upperTier) return null;
+                    const lowerFee = Number(lowerTier.serviceFee);
+                    const upperFee = Number(upperTier.serviceFee);
+                    if (!Number.isFinite(lowerFee) || !Number.isFinite(upperFee) || lowerFee < 0 || upperFee < 0) return null;
+                    const fraction = hours - lowerHours;
+                    return Math.round((lowerFee + (upperFee - lowerFee) * fraction) * 100) / 100;
+                }
+                const rate = Number(service.serviceFee);
+                return Number.isFinite(rate) && rate >= 0 ? rate * hours : null;
             };
 
             const splitHours = (booking) => {
@@ -526,20 +591,17 @@ export function initApp() {
                     const row = totals[matchedKey];
                     const hours = splitHours(booking).total;
                     const quantity = row.unit === '小時' ? hours : 1;
-                    const rate = serviceConfig && serviceConfig.serviceFee !== undefined && serviceConfig.serviceFee !== null
-                        ? Number(serviceConfig.serviceFee)
-                        : Number.NaN;
-                    if (!Number.isFinite(rate) || rate < 0) unpriced.add(serviceType);
-                    const amount = Number.isFinite(rate) && rate >= 0 ? rate * hours : 0;
+                    const amount = serviceFeeForHours(serviceConfig, hours);
+                    if (amount === null) unpriced.add(serviceType);
                     row.quantity += quantity;
                     row.sessions += 1;
-                    row.amount += amount;
+                    row.amount += amount === null ? 0 : amount;
                     if (booking.includesMeal && matchedKey !== 'mealService' && matchedKey !== 'mealAddOn') {
                         totals.mealAddOn.quantity += 1;
                         totals.mealAddOn.sessions += 1;
                     }
                     if (/外語|foreign language/i.test(descriptor) && /言語治療|speech therap/i.test(descriptor)) {
-                        foreignSpeechValue += amount;
+                        foreignSpeechValue += amount === null ? 0 : amount;
                     }
                 }
 
@@ -624,6 +686,8 @@ export function initApp() {
                     caregiverName: '',
                     remarks: '',
                     includesMeal: settings.value.services[0]?.mealIncluded || false,
+                    mealCount: 1,
+                    softMeal: false,
                     repeatFrequency: 'none',
                     repeatUntil: ''
                 };
@@ -642,9 +706,13 @@ export function initApp() {
                     serviceType: booking.serviceType || settings.value.services[0]?.name || '',
                     providerType: booking.serviceType || '',
                     caregiverCode: booking.caregiverCode || '',
-                    caregiverName: booking.caregiverName || '',
+                    caregiverName: (isMealBooking(booking) ? settings.value.mealCaregivers : settings.value.caregivers).find(caregiver =>
+                        caregiver.code === (booking.caregiverCode || booking.caregiverId)
+                    )?.name || booking.caregiverName || '',
                     remarks: booking.remarks || '',
                     includesMeal: Boolean(booking.includesMeal),
+                    mealCount: Number(booking.mealCount) || 1,
+                    softMeal: Boolean(booking.softMeal),
                     repeatFrequency: 'none',
                     repeatUntil: ''
                 };
@@ -673,6 +741,28 @@ export function initApp() {
                 } else {
                     if (!newBooking.value.startTime) newBooking.value.startTime = '09:00';
                     if (!newBooking.value.endTime) newBooking.value.endTime = '10:00';
+                }
+                const caregiver = bookingCaregivers().find(item => item.code === newBooking.value.caregiverCode);
+                if (isMealService(newBooking.value.serviceType) && !caregiver) {
+                    newBooking.value.caregiverCode = '';
+                    newBooking.value.caregiverName = '';
+                } else if (caregiver) {
+                    newBooking.value.caregiverName = caregiver.name;
+                }
+            };
+
+            const bookingCaregivers = () => isMealService(newBooking.value.serviceType)
+                ? settings.value.mealCaregivers
+                : settings.value.caregivers;
+
+            const applyCaregiverName = () => {
+                const caregiver = bookingCaregivers().find(item =>
+                    item.code === newBooking.value.caregiverCode
+                );
+                if (caregiver) {
+                    newBooking.value.caregiverName = caregiver.name;
+                } else if (isMealService(newBooking.value.serviceType)) {
+                    newBooking.value.caregiverName = '';
                 }
             };
 
@@ -788,7 +878,7 @@ export function initApp() {
             };
 
             const exportPowerAutomateCsv = () => {
-                const headers = ['booking_id', 'client_id', 'patient_id', 'voucher_no', 'service_date', 'start_time', 'end_time', 'service_type', 'provider_type', 'caregiver_code', 'caregiver_name', 'normal_hours', 'overtime_hours', 'meal_included', 'remarks', 'power_automate_code'];
+                const headers = ['booking_id', 'client_id', 'patient_id', 'voucher_no', 'service_date', 'start_time', 'end_time', 'service_type', 'provider_type', 'caregiver_code', 'caregiver_name', 'normal_hours', 'overtime_hours', 'meal_included', 'meal_count', 'soft_meal', 'remarks', 'power_automate_code'];
                 const rows = monthBookings.value.map(booking => {
                     const client = allClients.value.find(item => String(item.id) === String(booking.clientId)) || {};
                     const hours = splitHours(booking);
@@ -800,7 +890,10 @@ export function initApp() {
                         serviceName(booking), booking.providerType || '', booking.caregiverCode || '',
                         booking.caregiverName || '', isMealBooking(booking) ? '' : hours.normal.toFixed(2),
                         isMealBooking(booking) ? '' : hours.overtime.toFixed(2),
-                        booking.includesMeal ? 1 : 0, booking.remarks || '',
+                        booking.includesMeal ? 1 : 0,
+                        isMealBooking(booking) ? booking.mealCount || 1 : '',
+                        isMealBooking(booking) ? (booking.softMeal ? 1 : 0) : '',
+                        booking.remarks || '',
                         `B-${date.replace(/-/g, '')}-${booking.id}`
                     ];
                 });
@@ -819,11 +912,13 @@ export function initApp() {
             const loadBasicSettings = async () => {
                 basicUnlocking.value = true;
                 basicError.value = '';
+                basicNotice.value = '';
                 try {
                     const data = await request('/api/basic', {
                         headers: { 'X-Basic-Settings-Key': basicKey.value }
                     });
                     settings.value = { ...defaultBasicSettings(), ...data };
+                    settings.value.services.forEach(ensureDurationFees);
                     basicUnlocked.value = true;
                     basicPasswordModal.value = false;
                     activePage.value = 'basic';
@@ -849,6 +944,7 @@ export function initApp() {
             const saveBasicSettings = async () => {
                 savingBasic.value = true;
                 basicError.value = '';
+                basicNotice.value = '';
                 try {
                     const data = await request('/api/basic', {
                         method: 'PUT',
@@ -856,6 +952,8 @@ export function initApp() {
                         body: JSON.stringify(settings.value)
                     });
                     settings.value = { ...defaultBasicSettings(), ...data };
+                    settings.value.services.forEach(ensureDurationFees);
+                    basicNotice.value = 'Basic 設定已儲存。';
                 } catch (error) {
                     basicError.value = error.message;
                 } finally {
@@ -863,10 +961,12 @@ export function initApp() {
                 }
             };
 
-            const addService = () => settings.value.services.push({ code: '', name: '', serviceProfessional: '', serviceFee: 0, caregiverFee: 0, mealIncluded: false });
+            const addService = () => settings.value.services.push({ code: '', name: '', serviceProfessional: '', serviceFee: 0, caregiverFee: 0, mealIncluded: false, durationFees: defaultDurationFees() });
             const removeService = (index) => settings.value.services.splice(index, 1);
             const addCaregiver = () => settings.value.caregivers.push({ code: '', name: '', hourlyFee: 0 });
             const removeCaregiver = (index) => settings.value.caregivers.splice(index, 1);
+            const addMealCaregiver = () => settings.value.mealCaregivers.push({ code: '', name: '' });
+            const removeMealCaregiver = (index) => settings.value.mealCaregivers.splice(index, 1);
             const addHoliday = () => settings.value.holidays.push('');
             const removeHoliday = (index) => settings.value.holidays.splice(index, 1);
 
@@ -927,15 +1027,16 @@ export function initApp() {
                 picFilter, savePicFilter, bookingNotice, addBookingModal,
                 isLoadingData, dataLoadError, bookingsLoadError, loadData,
                 filteredClients, addClientModal, isSavingClient, addClientError, addClientNotice,
-                bookingError, isSavingBooking, editingBookingId, basicError, basicKey, basicPasswordModal, basicUnlocked, basicUnlocking, savingBasic, settings, newClient,
-                newBooking, monthBookings, sortedMonthBookings, calendarDays, bookingsForDay,
+                bookingError, isSavingBooking, editingBookingId, basicError, basicNotice, basicKey, basicPasswordModal, basicUnlocked, basicUnlocking, savingBasic, settings, newClient,
+                newBooking, monthBookings, sortedMonthBookings, calendarDays, bookingsForDay, isCalendarDayRed,
                 clientName, serviceName, isMealService, isMealBooking, monthlyHours, serviceTotals, clientTotals, providerTotals, serviceAgreementTotals,
                 reportPrintError, formatServiceAgreementQuantity, formatCurrency, formatBookingCurrency,
+                isDurationPricedService, ensureDurationFees,
                 bookingWeekday, bookingFinancials, serviceConfigForBooking,
-                monthOptions, bookingDateMin, bookingDateMax, mealBookings, openBooking, editBooking, selectClient, backToClients, applyServiceDefaults, saveBooking, removeBooking, exportPowerAutomateCsv,
+                monthOptions, bookingDateMin, bookingDateMax, mealBookings, openBooking, editBooking, selectClient, backToClients, applyServiceDefaults, applyCaregiverName, saveBooking, removeBooking, exportPowerAutomateCsv,
                 canRepeatFrequency, setRepeatFrequency, adjustRepeatForDate,
                 loadBasicSettings, openBasicPasswordPrompt, saveBasicSettings, addService, removeService, addCaregiver,
-                removeCaregiver, addHoliday, removeHoliday, openAddClientModal, saveNewClient,
+                removeCaregiver, addMealCaregiver, removeMealCaregiver, bookingCaregivers, addHoliday, removeHoliday, openAddClientModal, saveNewClient,
                 printReport, splitHours
             };
         }

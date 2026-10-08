@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS `bookings` (
   `caregiver_code` VARCHAR(50) NOT NULL DEFAULT '',
   `caregiver_name` VARCHAR(150) NOT NULL DEFAULT '',
   `includes_meal` TINYINT(1) NOT NULL DEFAULT 0,
+  `meal_count` TINYINT UNSIGNED DEFAULT NULL,
+  `soft_meal` TINYINT(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `idx_bookings_client_id` (`client_id`),
   KEY `idx_bookings_start_time` (`start_time`)
@@ -27,7 +29,9 @@ ALTER TABLE `bookings`
   ADD COLUMN IF NOT EXISTS `provider_type` VARCHAR(100) NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS `caregiver_code` VARCHAR(50) NOT NULL DEFAULT '',
   ADD COLUMN IF NOT EXISTS `caregiver_name` VARCHAR(150) NOT NULL DEFAULT '',
-  ADD COLUMN IF NOT EXISTS `includes_meal` TINYINT(1) NOT NULL DEFAULT 0;
+  ADD COLUMN IF NOT EXISTS `includes_meal` TINYINT(1) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS `meal_count` TINYINT UNSIGNED DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS `soft_meal` TINYINT(1) NOT NULL DEFAULT 0;
 
 ALTER TABLE `bookings`
   MODIFY COLUMN `caregiver_id` VARCHAR(50) DEFAULT NULL COMMENT 'Stores caregiver_code',

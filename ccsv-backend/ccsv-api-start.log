@@ -37,29 +37,52 @@ Backend directory: /volume1/web/ccsv-backend
 Database config file: /volume1/ccsv-private/ccsv-api.env
 Using Node.js: /var/packages/Node.js_v12/target/usr/local/bin/node (v12.22.12)
 🚀 CCSV Backend server running at http://0.0.0.0:3000
-❌ Database connection failed: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
-❌ SQL Error on /api/clients: Access denied for user 'root'@'192.168.1.142' (using password: YES)
+❌ Database connection failed: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
+❌ SQL Error on /api/clients: Access denied for user 'root
+'@'192.168.1.142' (using password: YES)
 ❌ SQL Error on /api/clients: connect ECONNREFUSED 192.168.1.142:3307
 ❌ SQL Error on /api/clients: connect ECONNREFUSED 192.168.1.142:3307
 ❌ SQL Error on /api/clients: connect ECONNREFUSED 192.168.1.142:3307
@@ -301,3 +324,98 @@ Emitted 'error' event on Server instance at:
   address: '0.0.0.0',
   port: 3000
 }
+SQL Error reading Basic settings: Unknown column 'setting_value' in 'field list'
+SQL Error reading Basic settings: Unknown column 'setting_value' in 'field list'
+SQL Error reading Basic settings: Unknown column 'setting_value' in 'field list'
+SQL Error reading Basic settings: Unknown column 'setting_value' in 'field list'
+SQL Error reading Basic settings: Unknown column 'setting_value' in 'field list'
+=== CCSV API startup: Thu Oct  8 11:16:56 CST 2026 ===
+Backend directory: /volume1/web/ccsv-backend
+Database config file: /volume1/ccsv-private/ccsv-api.env
+MariaDB target: 192.168.1.142:3306
+Using Node.js: /var/packages/Node.js_v12/target/usr/local/bin/node (v12.22.12)
+MariaDB target: 192.168.1.142:3306
+events.js:291
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3000
+    at Server.setupListenHandle [as _listen2] (net.js:1316:16)
+    at listenInCluster (net.js:1364:12)
+    at doListen (net.js:1501:7)
+    at processTicksAndRejections (internal/process/task_queues.js:85:21)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (net.js:1343:8)
+    at processTicksAndRejections (internal/process/task_queues.js:84:21) {
+  code: 'EADDRINUSE',
+  errno: 'EADDRINUSE',
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3000
+}
+SQL Error reading Basic settings: Unknown column 'setting_value' in 'field list'
+Warning: got packets out of order. Expected 2 but received 1
+=== CCSV API startup: Thu Oct  8 11:28:40 CST 2026 ===
+Backend directory: /volume1/web/ccsv-backend
+Database config file: /volume1/ccsv-private/ccsv-api.env
+MariaDB target: 192.168.1.142:3306
+Using Node.js: /var/packages/Node.js_v12/target/usr/local/bin/node (v12.22.12)
+MariaDB target: 192.168.1.142:3306
+🚀 CCSV Backend server running at http://0.0.0.0:3000
+WARNING: BASIC_SETTINGS_KEY is not set; Basic settings use the insecure default password 1234.
+✅ Connected to MariaDB successfully on port 3306!
+=== CCSV API startup: Thu Oct  8 11:35:53 CST 2026 ===
+Backend directory: /volume1/web/ccsv-backend
+Database config file: /volume1/ccsv-private/ccsv-api.env
+MariaDB target: 192.168.1.142:3306
+Using Node.js: /var/packages/Node.js_v12/target/usr/local/bin/node (v12.22.12)
+MariaDB target: 192.168.1.142:3306
+events.js:291
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3000
+    at Server.setupListenHandle [as _listen2] (net.js:1316:16)
+    at listenInCluster (net.js:1364:12)
+    at doListen (net.js:1501:7)
+    at processTicksAndRejections (internal/process/task_queues.js:85:21)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (net.js:1343:8)
+    at processTicksAndRejections (internal/process/task_queues.js:84:21) {
+  code: 'EADDRINUSE',
+  errno: 'EADDRINUSE',
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3000
+}
+Warning: got packets out of order. Expected 7 but received 1
+Warning: got packets out of order. Expected 5 but received 1
+Warning: got packets out of order. Expected 6 but received 1
+Warning: got packets out of order. Expected 7 but received 1
+Warning: got packets out of order. Expected 22 but received 1
+=== CCSV API startup: Thu Oct  8 11:48:12 CST 2026 ===
+Backend directory: /volume1/web/ccsv-backend
+Database config file: /volume1/ccsv-private/ccsv-api.env
+MariaDB target: 192.168.1.142:3306
+Using Node.js: /var/packages/Node.js_v12/target/usr/local/bin/node (v12.22.12)
+MariaDB target: 192.168.1.142:3306
+🚀 CCSV Backend server running at http://0.0.0.0:3000
+WARNING: BASIC_SETTINGS_KEY is not set; Basic settings use the insecure default password 1234.
+✅ Connected to MariaDB successfully on port 3306!
+Warning: got packets out of order. Expected 36 but received 1
+Warning: got packets out of order. Expected 6 but received 1
+Warning: got packets out of order. Expected 21 but received 1
+Warning: got packets out of order. Expected 7 but received 1
+Warning: got packets out of order. Expected 19 but received 1
+=== CCSV API startup: Thu Oct  8 13:01:52 CST 2026 ===
+Backend directory: /volume1/web/ccsv-backend
+Database config file: /volume1/ccsv-private/ccsv-api.env
+Checking for old running instances of server.js...
+/volume1/web/ccsv-backend/start-api.sh: line 18: pgrep: command not found
+No old instance found. Proceeding normally.
+MariaDB target: 192.168.1.142:3306
+Using Node.js: /var/packages/Node.js_v12/target/usr/local/bin/node (v12.22.12)
+MariaDB target: 192.168.1.142:3306
+🚀 CCSV Backend server running at http://0.0.0.0:3000
+WARNING: BASIC_SETTINGS_KEY is not set; Basic settings use the insecure default password 1234.
+✅ Connected to MariaDB successfully on port 3306!
