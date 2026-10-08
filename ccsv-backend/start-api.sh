@@ -29,7 +29,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     key=${line%%=*}
     value=${line#*=}
     case "$key" in
-        DB_HOST|DB_PORT|DB_USER|DB_PASSWORD|DB_NAME) ;;
+        DB_HOST|DB_PORT|DB_USER|DB_PASSWORD|DB_NAME|BASIC_SETTINGS_KEY) ;;
         *) continue ;;
     esac
 
@@ -47,6 +47,8 @@ rm -f "$ENV_TEMP"
 : "${DB_USER:?Missing DB_USER in .env}"
 : "${DB_PASSWORD:?Missing DB_PASSWORD in .env}"
 : "${DB_NAME:?Missing DB_NAME in .env}"
+
+echo "MariaDB target: $DB_HOST:$DB_PORT"
 
 NODE_BIN=
 for candidate in /var/packages/Node.js*/target/usr/local/bin/node; do

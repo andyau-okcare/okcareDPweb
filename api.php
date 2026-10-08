@@ -2,11 +2,11 @@
 header('Content-Type: application/json');
 
 // Your Database Connection Settings
-$host = '127.0.0.1';
+$host = '192.168.1.142';
 $user = 'root';
 $pass = 'Okc25258486!';
 $db   = 'ccsv_system';
-$port = 3307;
+$port = 3306;
 
 // Establish connection
 $conn = new mysqli($host, $user, $pass, $db, $port);

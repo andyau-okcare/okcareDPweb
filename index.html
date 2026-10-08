@@ -6,6 +6,31 @@
     <title>CCSV 服務預訂與個案管理系統 - OK Care Limited (RSP9501)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        indigo: {
+                            50: '#effafa', 100: '#daf4f4', 200: '#b9e9e9', 300: '#91dada',
+                            400: '#62c6c8', 500: '#4db5b7', 600: '#349b9d', 700: '#2b7d7f',
+                            800: '#245f60', 900: '#1e4c4d', 950: '#173b3b'
+                        },
+                        emerald: {
+                            50: '#effaf5', 100: '#d9f3e6', 200: '#b6e7cf', 300: '#8ddbb6',
+                            400: '#65c39e', 500: '#4eaf89', 600: '#398e6d', 700: '#2f7159',
+                            800: '#285a49', 900: '#224a3d', 950: '#17372d'
+                        },
+                        amber: {
+                            50: '#fff4f2', 100: '#fee5e1', 200: '#fdcbc4', 300: '#f9a69b',
+                            400: '#f46b5b', 500: '#ea5849', 600: '#d94536', 700: '#b9382d',
+                            800: '#972f28', 900: '#782821'
+                        }
+                    }
+                }
+            }
+        };
+    </script>
     <!-- Vue 3 -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <!-- FontAwesome Icons -->
@@ -14,14 +39,75 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        body { font-family: 'Inter', sans-serif; background-image: linear-gradient(135deg, rgba(98, 198, 200, 0.06), transparent 38%), linear-gradient(315deg, rgba(101, 195, 158, 0.06), transparent 35%); }
+        button, input, select, textarea { transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease; }
+        button:not(:disabled) { cursor: pointer; }
+        input:focus, select:focus, textarea:focus { border-color: #62c6c8 !important; --tw-ring-color: rgba(98, 198, 200, 0.3) !important; }
+        .calendar-booking-item-editable:hover {
+            position: relative;
+            z-index: 30;
+        }
         @media print {
             .no-print { display: none !important; }
             .print-only { display: block !important; }
             body { background: white; color: black; font-size: 11pt; }
             .page-break { page-break-before: always; }
+            .calendar-booking-item { margin-bottom: 1pt !important; }
+            .calendar-booking-card {
+                padding: 1pt 2pt !important;
+                font-size: 6.5pt !important;
+                line-height: 1.05 !important;
+                border-width: 0.5pt !important;
+            }
+            @page { size: A4 portrait; margin: 0; }
+            body:has(.service-agreement-form) { background: white !important; }
+            body:has(.service-agreement-form) #app > header,
+            body:has(.service-agreement-form) #app > nav,
+            body:has(.service-agreement-form) #app > main > :not(.official-service-report) { display: none !important; }
+            body:has(.service-agreement-form) #app > main {
+                display: block !important;
+                width: 210mm;
+                max-width: none;
+                margin: 0;
+                padding: 0;
+            }
+            .official-service-report { display: block !important; overflow: visible !important; border: 0 !important; box-shadow: none !important; }
+            .service-agreement-form {
+                width: 210mm !important;
+                min-height: 297mm !important;
+                margin: 0 !important;
+                padding: 9mm 13mm !important;
+                border: 0 !important;
+                box-shadow: none !important;
+                font-size: 8pt !important;
+                line-height: 1.08 !important;
+                break-inside: avoid;
+            }
+            .agreement-service-row { min-height: 4.2mm !important; }
         }
         .print-only { display: none; }
+        .service-agreement-form {
+            box-sizing: border-box;
+            width: 210mm;
+            min-height: 297mm;
+            margin: 1rem auto;
+            padding: 9mm 13mm;
+            background: white;
+            color: #111;
+            border: 1px solid #cbd5e1;
+            box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+            font-family: "Times New Roman", serif;
+            font-size: 8pt;
+            line-height: 1.08;
+        }
+        .agreement-service-row {
+            display: grid;
+            grid-template-columns: 5mm minmax(0, 1fr) 22mm 14mm;
+            align-items: center;
+            min-height: 4.2mm;
+            gap: 1mm;
+        }
+        .agreement-service-row:nth-child(even) { background: #fafafa; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -30,7 +116,7 @@
         #app-loading-screen {
             position: fixed;
             inset: 0;
-            background: #020617;
+            background: #173b3b;
             color: white;
             z-index: 9999;
             display: flex;
@@ -40,6 +126,8 @@
             transition: opacity 0.4s ease;
         }
         [v-cloak] { display: none !important; }
+        .booking-notice-enter-active, .booking-notice-leave-active { transition: opacity 300ms ease, transform 300ms ease; }
+        .booking-notice-enter-from, .booking-notice-leave-to { opacity: 0; transform: translateY(-0.5rem); }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-800 antialiased min-h-screen">
@@ -55,64 +143,121 @@
 
     <!-- Main App Container -->
     <div id="app" v-cloak class="min-h-screen flex flex-col">
+        <div v-if="isLoadingData" role="status" aria-live="polite" class="fixed inset-0 z-[80] flex flex-col items-center justify-center bg-white/95 p-6 text-center backdrop-blur-sm">
+            <div class="relative mb-6 flex h-20 w-20 items-center justify-center">
+                <span class="absolute inset-0 animate-spin rounded-full border-4 border-emerald-100 border-t-indigo-500"></span>
+                <img src="web_images/logo-OKcare@Bottom.png" alt="" class="h-12 w-12 object-contain">
+            </div>
+            <h2 class="text-xl font-black text-indigo-950">正在載入資料</h2>
+            <p class="mt-2 text-sm text-slate-600">正在連接伺服器，請稍候…</p>
+        </div>
         <header class="bg-indigo-950 text-white shadow-md sticky top-0 z-40 no-print border-b border-indigo-800">
             <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center gap-4">
                 <div class="flex items-center space-x-3">
-                    <div class="bg-amber-400 text-indigo-950 p-2.5 rounded-xl shadow-inner font-bold text-xl">
-                        <i class="fa-solid fa-hands-holding-child"></i>
-                    </div>
+                    <img src="web_images/logo-OKcare@Bottom.png" alt="OK Care 標誌" class="h-16 w-16 shrink-0 object-contain">
                     <div>
                         <div class="flex items-center space-x-2">
                             <h1 class="font-black text-lg tracking-tight leading-tight">OK Care - CCSV 社區照顧服務券管理系統</h1>
-                            <span class="bg-indigo-800 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded border border-indigo-700">RSP9501</span>
+                            <span class="bg-emerald-400 text-emerald-950 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-300">RSP9501</span>
                         </div>
                         <p class="text-xs text-indigo-200">認可服務單位 (RSP) | 社會福利署認可服務機構</p>
-                    </div>
-                </div>
-                <div class="flex items-center space-x-2">
-                    <div class="text-right">
-                        <div class="text-[10px] text-indigo-300 font-medium">系統當前規劃月份</div>
-                        <div class="text-xs font-extrabold text-amber-300 font-mono"><i class="fa-solid fa-calendar-day mr-1"></i>{{ globalServiceMonth }}</div>
                     </div>
                 </div>
             </div>
         </header>
 
+        <nav class="bg-white border-b border-slate-200 shadow-sm no-print overflow-x-auto">
+            <div class="max-w-7xl mx-auto px-4 flex gap-1 min-w-max" aria-label="System pages">
+                <button v-if="!selectedClient && activePage === 'basic'" @click="activePage = 'info'" class="px-3 py-3 border-b-2 border-transparent text-xs font-bold whitespace-nowrap text-slate-500 hover:text-indigo-700">
+                    個案名冊
+                </button>
+                <button v-if="selectedClient" @click="backToClients" class="px-3 py-3 border-b-2 border-transparent text-xs font-bold whitespace-nowrap text-slate-500 hover:text-indigo-700">
+                    ← 個案名冊
+                </button>
+                <button v-for="page in (selectedClient ? [
+                    { id: 'info', label: 'Info 個案資料' },
+                    { id: 'a', label: 'A 月度總覽' },
+                    { id: 'calendar', label: 'Calendar 月曆' },
+                    { id: 'meal', label: 'Meal 膳食' },
+                    { id: 'e', label: 'E 服務時數' },
+                    { id: 'f', label: 'F 人員時數' },
+                    { id: 'g', label: 'G Power Automate' },
+                    { id: 'h', label: 'H 正常/超時' }
+                ] : [])" :key="page.id" @click="activePage = page.id"
+                    :aria-current="activePage === page.id ? 'page' : null"
+                    :class="activePage === page.id ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-600 hover:text-indigo-700'"
+                    class="px-3 py-3 border-b-2 text-xs font-bold whitespace-nowrap">
+                    {{ page.label }}
+                </button>
+                <button v-if="!selectedClient" @click="openBasicPasswordPrompt" :aria-current="activePage === 'basic' ? 'page' : null"
+                    :class="activePage === 'basic' ? 'border-amber-500 text-amber-700' : 'border-transparent text-slate-600 hover:text-amber-700'"
+                    class="px-3 py-3 border-b-2 text-xs font-bold whitespace-nowrap">
+                    Basic 保密設定
+                </button>
+            </div>
+        </nav>
+
         <main class="flex-grow max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
+            <div v-if="selectedClient" class="rounded-xl bg-indigo-950 px-4 py-3 text-white flex flex-wrap items-center justify-between gap-2 no-print">
+                <div>
+                    <div class="text-xs text-indigo-200">目前個案</div>
+                    <div class="font-bold">{{ selectedClient.nameCn }} <span class="font-normal text-indigo-200">{{ selectedClient.nameEn }}</span></div>
+                </div>
+                <div class="text-xs text-indigo-200">{{ selectedClient.patientId }} · {{ selectedClient.voucherNo }}</div>
+            </div>
+            <div v-if="dataLoadError" role="alert" class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+                <div class="font-bold">無法載入個案資料；頁面尚未連接到 API。</div>
+                <div class="mt-1 break-all">{{ dataLoadError }}</div>
+                <p class="mt-2">請在同一網絡的同事電腦瀏覽器直接開啟上列 API 位址後的 <code>/api/clients</code> 路徑。若連不上，請檢查 NAS 防火牆及 TCP 3000；若顯示 JSON 錯誤，請檢查 API 日誌及資料庫權限。</p>
+                <button @click="loadData" class="mt-3 rounded-lg border border-red-300 bg-white px-3 py-1.5 font-bold">重新載入</button>
+            </div>
+            <div v-if="bookingsLoadError" role="alert" class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <div class="font-bold">預約資料載入失敗；個案名冊仍可使用。</div>
+                <div class="mt-1 break-all">{{ bookingsLoadError }}</div>
+                <button @click="loadData" class="mt-3 rounded-lg border border-amber-300 bg-white px-3 py-1.5 font-bold">重新載入</button>
+            </div>
+            <div v-if="bookingColorError" role="alert" class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                {{ bookingColorError }}
+            </div>
+            <Transition name="booking-notice">
+                <div v-if="bookingNotice" role="status" class="fixed right-4 top-20 z-[70] w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 shadow-lg">
+                    {{ bookingNotice }}
+                </div>
+            </Transition>
             <!-- Summary KPI Cards -->
-            <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4 no-print">
+            <div v-if="activePage === 'info' && selectedClient" class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4 no-print">
                 <div class="bg-white p-4 rounded-2xl shadow-xs border border-slate-200 flex items-center space-x-4">
                     <div class="p-3.5 bg-indigo-50 text-indigo-600 rounded-xl"><i class="fa-solid fa-users text-2xl"></i></div>
                     <div>
-                        <p class="text-xs text-slate-500 font-medium">個案總數 (Total Clients)</p>
-                        <p class="text-2xl font-black text-slate-800">{{ allClients.length }} <span class="text-xs font-normal text-slate-400">位</span></p>
+                        <p class="text-xs text-slate-500 font-medium">社區券編號 (CCSV Number)</p>
+                        <p class="text-lg font-black text-slate-800">{{ selectedClient.voucherNo || '—' }}</p>
                     </div>
                 </div>
                 <div class="bg-white p-4 rounded-2xl shadow-xs border border-slate-200 flex items-center space-x-4">
-                    <div class="p-3.5 bg-amber-50 text-amber-600 rounded-xl"><i class="fa-solid fa-calendar-check text-2xl"></i></div>
+                    <div class="p-3.5 bg-amber-50 text-amber-600 rounded-xl"><i class="fa-solid fa-percent text-2xl"></i></div>
                     <div>
-                        <p class="text-xs text-slate-500 font-medium">本月預訂總數 (Total Bookings)</p>
-                        <p class="text-2xl font-black text-slate-800">{{ monthlyTotalBookingsCount }} <span class="text-xs font-normal text-slate-400">項</span></p>
+                        <p class="text-xs text-slate-500 font-medium">共同付款級別 (Copayment Level)</p>
+                        <p class="text-lg font-black text-slate-800">{{ selectedClient.copayTier || '—' }} <span class="text-sm font-bold text-amber-600">({{ serviceAgreementTotals.copayRateLabel }})</span></p>
                     </div>
                 </div>
                 <div class="bg-white p-4 rounded-2xl shadow-xs border border-slate-200 flex items-center space-x-4">
-                    <div class="p-3.5 bg-emerald-50 text-emerald-600 rounded-xl"><i class="fa-solid fa-vault text-2xl"></i></div>
+                    <div class="p-3.5 bg-emerald-50 text-emerald-600 rounded-xl"><i class="fa-solid fa-calendar-check text-2xl"></i></div>
                     <div>
-                        <p class="text-xs text-slate-500 font-medium">預算總上限 (Cap Allocation)</p>
-                        <p class="text-xl font-black text-emerald-700 font-mono">${{ (statsForCurrentPic.count * 10824).toLocaleString() }}</p>
+                        <p class="text-xs text-slate-500 font-medium">本月預約總數 (Total Bookings)</p>
+                        <p class="text-2xl font-black text-slate-800">{{ monthBookings.length }} <span class="text-xs font-normal text-slate-400">項</span></p>
                     </div>
                 </div>
                 <div class="bg-white p-4 rounded-2xl shadow-xs border border-slate-200 flex items-center space-x-4">
-                    <div class="p-3.5 bg-purple-50 text-purple-600 rounded-xl"><i class="fa-solid fa-file-invoice-dollar text-2xl"></i></div>
+                    <div class="p-3.5 bg-purple-50 text-purple-600 rounded-xl"><i class="fa-solid fa-user-tie text-2xl"></i></div>
                     <div>
-                        <p class="text-xs text-slate-500 font-medium">已預訂總額 (Booked Fee)</p>
-                        <p class="text-xl font-black text-purple-700 font-mono">${{ totalBookedForPic.toLocaleString() }}</p>
+                        <p class="text-xs text-slate-500 font-medium">負責人 (Person in Charge)</p>
+                        <p class="text-2xl font-black text-slate-800">{{ selectedClient.pic || '—' }}</p>
                     </div>
                 </div>
             </div>
 
             <!-- Client Directory Section -->
-            <section v-if="!selectedClient" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden no-print">
+            <section v-if="activePage === 'info' && !selectedClient" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden no-print">
                 <div class="p-5 bg-slate-50/80 border-b border-slate-200 space-y-4">
                     <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                         <div>
@@ -120,19 +265,25 @@
                                 <i class="fa-solid fa-address-book text-indigo-600 mr-2.5"></i>
                                 CCSV 長者個案名冊 (Master Directory)
                             </h2>
-                            <p class="text-xs text-slate-500 mt-0.5">點擊列表「管理行程」即可進入個人工作區，進行 Form 7 報表及月曆排班</p>
+                            <p class="text-xs text-slate-500 mt-0.5">個案資料供預約登記、服務日曆及月報使用</p>
                         </div>
-                        <button @click="openAddClientModal" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition flex items-center gap-2">
-                            <i class="fa-solid fa-user-plus"></i>
-                            新增個案
-                        </button>
+                        <div class="flex flex-wrap gap-2">
+                            <input v-model="searchQuery" type="search" placeholder="搜尋姓名、券號、病人編號、HKID" class="rounded-xl border-slate-300 text-sm">
+                            <select v-model="picFilter" @change="savePicFilter" aria-label="按 PIC 篩選個案" class="rounded-xl border-slate-300 text-sm">
+                                <option value="ALL">全部 PIC</option>
+                                <option v-for="pic in picOptions" :key="pic" :value="pic">PIC: {{ pic }}</option>
+                            </select>
+                            <button @click="openAddClientModal" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-sm transition flex items-center gap-2">
+                                <i class="fa-solid fa-user-plus"></i>
+                                新增個案
+                            </button>
+                        </div>
                     </div>
                 </div>
 
                 <div v-if="addClientNotice" role="status" class="mx-5 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
                     {{ addClientNotice }}
                 </div>
-
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-xs border-collapse">
                         <thead class="bg-slate-100 text-slate-700 uppercase text-[11px] font-extrabold border-b border-slate-200">
@@ -145,12 +296,14 @@
                                 <th class="p-3.5">共同付款級別</th>
                                 <th class="p-3.5">服務地區</th>
                                 <th class="p-3.5">病人編號</th>
+                                <th class="p-3.5">地址 / 電話</th>
+                                <th class="p-3.5">PIC</th>
                                 <th class="p-3.5 text-center">操作</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-200">
-                            <tr v-for="(client, index) in paginatedClients" :key="client.id" class="hover:bg-indigo-50/50 transition">
-                                <td class="p-3.5 text-center font-mono text-slate-400 font-semibold">{{ (currentPage - 1) * pageSize + index + 1 }}</td>
+                            <tr v-for="(client, index) in filteredClients" :key="client.id" class="hover:bg-indigo-50/50 transition">
+                                <td class="p-3.5 text-center font-mono text-slate-400 font-semibold">{{ index + 1 }}</td>
                                 <td class="p-3.5 font-mono font-black text-indigo-950">{{ client.voucherNo }}</td>
                                 <td class="p-3.5">
                                     <div class="font-bold text-slate-900 text-sm">{{ client.nameCn }}</div>
@@ -161,17 +314,419 @@
                                 <td class="p-3.5 font-bold text-slate-800">{{ client.copayTier }}</td>
                                 <td class="p-3.5 text-slate-700 font-medium">{{ client.district }}</td>
                                 <td class="p-3.5 font-mono text-slate-600">{{ client.patientId }}</td>
+                                <td class="p-3.5 min-w-48">
+                                    <div>{{ client.address }}</div>
+                                    <div class="text-slate-500">{{ client.telephone }}</div>
+                                </td>
+                                <td class="p-3.5 font-bold text-indigo-900">{{ client.pic || '—' }}</td>
                                 <td class="p-3.5 text-center">
                                     <button @click="selectClient(client)" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs transition flex items-center space-x-1.5 mx-auto">
-                                        <span>管理行程</span>
+                                        <span>開啟個案</span>
                                         <i class="fa-solid fa-arrow-right text-[10px]"></i>
                                     </button>
                                 </td>
                             </tr>
+                            <tr v-if="!filteredClients.length"><td colspan="11" class="p-8 text-center text-slate-500">沒有符合的個案。</td></tr>
                         </tbody>
                     </table>
                 </div>
             </section>
+
+            <section v-if="activePage === 'info' && selectedClient" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-5 border-b border-slate-200 flex flex-wrap justify-between items-center gap-3">
+                    <div>
+                        <h2 class="text-lg font-black text-indigo-950">Info — 個案資料</h2>
+                        <p class="text-sm text-slate-500">個案個人資料</p>
+                    </div>
+                    <button @click="openBooking(selectedClient)" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white">＋ 新增服務預約</button>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-5 text-sm">
+                    <div><div class="text-xs text-slate-500">HKID</div><div class="font-semibold">{{ selectedClient.hkid }}</div></div>
+                    <div><div class="text-xs text-slate-500">社區券編號</div><div class="font-semibold">{{ selectedClient.voucherNo }}</div></div>
+                    <div><div class="text-xs text-slate-500">病人編號</div><div class="font-semibold">{{ selectedClient.patientId }}</div></div>
+                    <div><div class="text-xs text-slate-500">中文姓名</div><div class="font-semibold">{{ selectedClient.nameCn }}</div></div>
+                    <div><div class="text-xs text-slate-500">英文姓名</div><div class="font-semibold">{{ selectedClient.nameEn }}</div></div>
+                    <div><div class="text-xs text-slate-500">共同付款比例</div><div class="font-semibold">{{ selectedClient.copayTier }}</div></div>
+                    <div><div class="text-xs text-slate-500">行政個案名稱</div><div class="font-semibold">{{ selectedClient.adminClientName }}</div></div>
+                    <div><div class="text-xs text-slate-500">PIC</div><div class="font-semibold">{{ selectedClient.pic || '—' }}</div></div>
+                    <div><div class="text-xs text-slate-500">服務地區</div><div class="font-semibold">{{ selectedClient.district }}</div></div>
+                    <div><div class="text-xs text-slate-500">電話</div><div class="font-semibold">{{ selectedClient.telephone }}</div></div>
+                    <div class="sm:col-span-2 lg:col-span-3"><div class="text-xs text-slate-500">地址</div><div class="font-semibold">{{ selectedClient.address }}</div></div>
+                </div>
+            </section>
+
+            <section v-if="activePage === 'a' && selectedClient" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-5 border-b border-slate-200 flex flex-wrap justify-between gap-3">
+                    <div>
+                        <h2 class="text-lg font-black text-indigo-950">A — {{ serviceMonth }} 月度服務總覽</h2>
+                        <p class="text-sm text-slate-500">{{ selectedClient.nameCn }} — 本月個案服務預約。</p>
+                    </div>
+                    <button @click="printReport" class="no-print px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold">列印</button>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 p-4">
+                    <div class="rounded-xl bg-indigo-50 p-4"><div class="text-xs text-slate-500">預約項目</div><div class="text-2xl font-black">{{ monthBookings.length }}</div></div>
+                    <div class="rounded-xl bg-emerald-50 p-4"><div class="text-xs text-slate-500">服務小時</div><div class="text-2xl font-black">{{ (monthlyHours.normal + monthlyHours.overtime).toFixed(2) }}</div></div>
+                    <div class="rounded-xl bg-amber-50 p-4"><div class="text-xs text-slate-500">正常時數</div><div class="text-2xl font-black">{{ monthlyHours.normal.toFixed(2) }}</div></div>
+                    <div class="rounded-xl bg-rose-50 p-4"><div class="text-xs text-slate-500">超時時數</div><div class="text-2xl font-black">{{ monthlyHours.overtime.toFixed(2) }}</div></div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[1600px] text-sm text-left">
+                        <thead class="bg-slate-100 text-xs uppercase">
+                            <tr>
+                                <th class="p-3">日期</th>
+                                <th class="p-3">星期</th>
+                                <th class="p-3">開始時間</th>
+                                <th class="p-3">結束時間</th>
+                                <th class="p-3">服務類型</th>
+                                <th class="p-3">總時數（節數）</th>
+                                <th class="p-3">膳食數量</th>
+                                <th class="p-3">服務類型代碼</th>
+                                <th class="p-3">照顧者編碼</th>
+                                <th class="p-3">照顧者姓名</th>
+                                <th class="p-3">服務專業類別</th>
+                                <th class="p-3">服務費總額</th>
+                                <th class="p-3">共同付款總額</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">
+                            <tr v-for="booking in sortedMonthBookings" :key="booking.id">
+                                <td class="p-3 whitespace-nowrap">{{ String(booking.startTime).slice(0, 10) }}</td>
+                                <td class="p-3">{{ bookingWeekday(booking) }}</td>
+                                <td class="p-3 whitespace-nowrap">{{ isMealBooking(booking) ? '' : String(booking.startTime).slice(11, 16) }}</td>
+                                <td class="p-3 whitespace-nowrap">{{ isMealBooking(booking) ? '' : String(booking.endTime).slice(11, 16) }}</td>
+                                <td class="p-3">{{ serviceName(booking) }}</td>
+                                <td class="p-3 whitespace-nowrap">{{ isMealBooking(booking) ? '' : splitHours(booking).total.toFixed(2) }}</td>
+                                <td class="p-3 text-center">{{ booking.includesMeal ? 1 : '' }}</td>
+                                <td class="p-3">{{ booking.serviceTypeId || serviceConfigForBooking(booking)?.code || '—' }}</td>
+                                <td class="p-3">{{ booking.caregiverId || booking.caregiverCode || '—' }}</td>
+                                <td class="p-3">{{ booking.caregiverName || '—' }}</td>
+                                <td class="p-3">{{ serviceConfigForBooking(booking)?.serviceProfessional || '—' }}</td>
+                                <td class="p-3 whitespace-nowrap">
+                                    <span v-if="bookingFinancials(booking).serviceFee !== null">$ {{ formatBookingCurrency(bookingFinancials(booking).serviceFee) }}</span>
+                                    <span v-else>—</span>
+                                </td>
+                                <td class="p-3 whitespace-nowrap">
+                                    <span v-if="bookingFinancials(booking).copayFee !== null">$ {{ formatBookingCurrency(bookingFinancials(booking).copayFee) }}</span>
+                                    <span v-else>—</span>
+                                </td>
+                            </tr>
+                            <tr v-if="!monthBookings.length"><td colspan="13" class="p-8 text-center text-slate-500">本月尚無服務預約。</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section v-if="(activePage === 'calendar' || activePage === 'meal') && selectedClient" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-5 border-b border-slate-200 flex flex-wrap justify-between items-center gap-4">
+                    <div>
+                        <h2 class="text-lg font-black text-indigo-950">{{ activePage === 'meal' ? 'Meal — 膳食安排' : 'Calendar — 個案服務月曆' }}</h2>
+                        <p class="text-sm text-slate-500">{{ serviceMonth }}<span v-if="activePage === 'meal'" class="no-print"> · 只顯示標示為膳食的預約</span></p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label class="no-print flex items-center gap-2 text-sm font-bold text-slate-700">
+                            <span>月份</span>
+                            <select v-model="serviceMonth" aria-label="選擇日曆月份" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
+                                <option v-for="month in monthOptions" :key="month.value" :value="month.value">{{ month.label }}</option>
+                            </select>
+                        </label>
+                        <button @click="printReport" class="no-print rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white">列印</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-7 border-l border-t border-slate-200">
+                    <div v-for="dayName in ['日','一','二','三','四','五','六']" :key="dayName" class="p-2 text-center text-xs font-bold bg-slate-100 border-r border-b border-slate-200">{{ dayName }}</div>
+                    <div v-for="(day, index) in calendarDays" :key="`${serviceMonth}-${index}`" class="min-h-32 p-2 border-r border-b border-slate-200">
+                        <template v-if="day">
+                            <div class="flex justify-between text-xs font-bold mb-1">
+                                <span>{{ day }}</span>
+                                <button v-if="activePage === 'calendar'" @click="openBooking(selectedClient, `${serviceMonth}-${String(day).padStart(2, '0')}`)" class="no-print text-indigo-600" aria-label="新增當日預約">+</button>
+                            </div>
+                            <div v-for="booking in bookingsForDay(day, activePage === 'meal')" :key="booking.id"
+                                :class="['calendar-booking-item group relative mb-1', activePage === 'calendar' ? 'calendar-booking-item-editable' : '']">
+                                <button @click="editBooking(booking)" :disabled="activePage !== 'calendar'"
+                                    :style="{ backgroundColor: bookingColor(booking), borderColor: bookingColor(booking) }"
+                                    :class="['calendar-booking-card w-full rounded border p-1.5 text-left text-xs leading-snug text-indigo-950 disabled:cursor-default', activePage === 'calendar' ? 'pr-14' : 'pr-2']">
+                                    <div v-if="!isMealBooking(booking)" class="font-bold">{{ String(booking.startTime).slice(11, 16) }}–{{ String(booking.endTime).slice(11, 16) }}</div>
+                                    <div>{{ serviceName(booking) }}</div>
+                                    <div>{{ [booking.caregiverCode, booking.caregiverName].filter(Boolean).join(' · ') || '未指定照顧者' }}</div>
+                                </button>
+                                <div v-if="activePage === 'calendar'" class="no-print absolute right-1 top-1 z-10 flex items-center gap-1">
+                                    <button @click.stop="openBookingColorPickerFor(booking)"
+                                        :aria-label="`選擇${serviceName(booking)}預約顏色`"
+                                        :aria-expanded="bookingColorPickerOpen(booking)"
+                                        title="更改預約顏色"
+                                        :style="{ backgroundColor: bookingColor(booking) }"
+                                        :class="{ 'opacity-100': bookingColorPickerOpen(booking) }"
+                                        class="h-5 w-5 rounded-full border border-white opacity-0 shadow ring-1 ring-slate-400 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"></button>
+                                    <button @click.stop="removeBooking(booking)"
+                                        :aria-label="`刪除預約 ${String(booking.startTime).slice(11, 16)} ${serviceName(booking)}`"
+                                        title="刪除預約"
+                                        class="inline-flex h-5 w-5 items-center justify-center rounded text-red-600 opacity-0 transition-opacity hover:bg-red-100 hover:text-red-800 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-400 group-hover:opacity-100">
+                                        <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                    </button>
+                                    <div v-if="bookingColorPickerOpen(booking)"
+                                        class="absolute right-0 top-7 z-20 grid w-32 grid-cols-4 gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-lg"
+                                        @click.stop>
+                                        <button @click="closeBookingColorPicker"
+                                            class="col-span-4 mb-1 text-right text-xs font-semibold text-slate-500 hover:text-slate-900"
+                                            aria-label="關閉顏色選擇">關閉</button>
+                                        <button v-for="option in bookingColorOptions" :key="option.value"
+                                            @click="saveServiceColor(booking, option.value)"
+                                            :aria-label="`${option.label}預約顏色`"
+                                            :title="option.label"
+                                            :style="{ backgroundColor: option.value }"
+                                            class="h-6 w-6 rounded-full border border-slate-300 hover:ring-2 hover:ring-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </section>
+
+            <section v-if="(activePage === 'e' || activePage === 'f') && selectedClient" class="official-service-report bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="no-print p-5 border-b border-slate-200 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-lg font-black text-indigo-950">{{ activePage === 'e' ? 'E — 長者社區照顧服務券服務組合協議' : 'F — 長者社區照顧服務券服務組合協議（副本）' }}</h2>
+                        <p class="text-sm text-slate-500">月份：{{ serviceMonth }} · 由本月預約服務及 Basic 費用設定計算。</p>
+                    </div>
+                    <button @click="printReport" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white">列印表格</button>
+                </div>
+                <p v-if="reportPrintError" role="alert" class="no-print mx-5 mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{{ reportPrintError }}</p>
+                <div class="service-agreement-form">
+                    <div v-if="activePage === 'f'" class="mb-3 border border-black px-2 py-1 text-center font-bold">此收據不可以在綜合社會保障援助計劃下作申請用途</div>
+                    <h1 class="text-center text-[12pt] font-bold underline">「長者社區照顧服務券計劃」</h1>
+                    <h2 class="mb-3 text-center text-[11pt] font-bold underline">服務組合協議</h2>
+                    <div class="grid grid-cols-2 gap-x-8 gap-y-1">
+                        <div>長者姓名：<span class="inline-block min-w-32 border-b border-black px-2">{{ selectedClient.nameCn || '　' }}</span>（中）</div>
+                        <div>協議編號：<span class="inline-block min-w-24 border-b border-black px-2"></span></div>
+                        <div>社區券證明書編號：<span class="inline-block min-w-28 border-b border-black px-2">{{ selectedClient.voucherNo || selectedClient.patientId }}</span></div>
+                        <div><span class="inline-block min-w-32 border-b border-black px-2">{{ selectedClient.nameEn || '　' }}</span>（英）</div>
+                        <div class="col-span-2">提供服務時段：<span class="inline-block min-w-36 border-b border-black px-2">{{ serviceMonth.slice(0, 4) }} 年 {{ serviceMonth.slice(5, 7) }} 月</span></div>
+                    </div>
+                    <p class="mt-1">（請在適當的方格內加上「✓」）</p>
+                    <div class="flex flex-wrap items-center gap-x-5 gap-y-1">
+                        <span>社區券價值（最高至 $10,824）：$ {{ formatCurrency(serviceAgreementTotals.voucherValue) }}</span>
+                        <span>（另自費：$ {{ formatCurrency(serviceAgreementTotals.selfPaidValue) }}）</span>
+                    </div>
+                    <div class="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                        <span>共同付款級別：</span>
+                        <span v-for="tier in ['Cat I','Cat II','Cat III','Cat IV','Cat V','Cat VI']" :key="tier">
+                            {{ selectedClient.copayTier === tier ? '☑' : '□' }} {{ tier }}（{{ Math.round(({ 'Cat I': 0.05, 'Cat II': 0.08, 'Cat III': 0.12, 'Cat IV': 0.16, 'Cat V': 0.25, 'Cat VI': 0.40 })[tier] * 100) }}%）
+                        </span>
+                    </div>
+                    <div class="mt-3 grid grid-cols-[1fr_auto] border border-black font-bold">
+                        <span class="p-1">「社區券價值」共同付款金額（A項）：（社區券價值）×（共同付款級別百分比）</span>
+                        <span class="min-w-24 bg-yellow-200 p-1 text-right">$ {{ formatCurrency(serviceAgreementTotals.copayAmountA) }}</span>
+                    </div>
+                    <p class="mt-2 font-bold">本月使用服務：</p>
+                    <div>
+                        <div v-for="row in serviceAgreementTotals.rows" :key="row.key" class="agreement-service-row">
+                            <span class="text-center">{{ row.quantity ? '☑' : '□' }}</span>
+                            <span>{{ row.label }}</span>
+                            <span class="border-b border-black text-right">{{ formatServiceAgreementQuantity(row) }}</span>
+                            <span>（{{ row.unit }}）</span>
+                        </div>
+                    </div>
+                    <div class="mt-2 grid grid-cols-[1fr_auto] border border-black">
+                        <span class="p-1">「額外言語治療服務專項社區券價值」（註）共同付款金額（B項）</span>
+                        <span class="min-w-24 bg-yellow-200 p-1 text-right">$ {{ formatCurrency(serviceAgreementTotals.copayAmountB) }}</span>
+                    </div>
+                    <p class="border-x border-black px-1 text-[7pt]">（額外言語治療服務專項社區券價值）×（共同付款級別百分比）</p>
+                    <div class="grid grid-cols-[1fr_auto] border border-black font-bold">
+                        <span class="p-1 text-right">總付款金額（A項）＋（B項）：</span>
+                        <span class="min-w-24 bg-yellow-200 p-1 text-right">$ {{ formatCurrency(serviceAgreementTotals.totalCopayAmount) }}</span>
+                    </div>
+                    <div class="mt-4 grid grid-cols-1 gap-2">
+                        <div>認可服務單位負責人簽署：<span class="inline-block w-48 border-b border-black"></span></div>
+                        <div>認可服務單位負責人姓名：<span class="inline-block w-48 border-b border-black"></span></div>
+                        <div>認可服務單位負責人職位：<span class="inline-block w-48 border-b border-black"></span></div>
+                    </div>
+                    <div v-if="activePage === 'e'" class="mt-3 border-2 border-red-500 p-2">
+                        社區券持有人／親屬／照顧者簽署：<span class="inline-block w-40 border-b border-black"></span>
+                        （姓名：<span class="inline-block w-32 border-b border-black"></span>）
+                    </div>
+                    <div v-else class="mt-3 flex justify-end">
+                        <div class="flex h-14 w-24 items-center justify-center border border-black text-[7pt]">（機構蓋印）</div>
+                    </div>
+                    <p class="mt-2">日期：{{ serviceMonth.slice(0, 4) }} 年 {{ serviceMonth.slice(5, 7) }} 月 ______ 日</p>
+                    <p v-if="serviceAgreementTotals.unmatched.length" class="no-print mt-3 rounded bg-amber-50 p-2 text-amber-900">
+                        未能配對至表格的服務：{{ serviceAgreementTotals.unmatched.join('、') }}
+                    </p>
+                </div>
+            </section>
+
+            <section v-if="activePage === 'h' && selectedClient" class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="p-5 border-b border-slate-200 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-lg font-black text-indigo-950">H — 每月正常及超時服務時數</h2>
+                        <p class="text-sm text-slate-500">月份：{{ serviceMonth }} · {{ basicUnlocked ? '按 Basic 設定的正常時間及假期計算。' : '目前以預設平日 09:00–18:00 計算；如需使用 Basic 假期設定，請先在 Basic 頁解鎖。' }}</p>
+                    </div>
+                    <button @click="printReport" class="no-print rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white">列印報表</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-slate-100 text-xs"><tr><th class="p-3">個案</th><th class="p-3">服務次數</th><th class="p-3">正常時數</th><th class="p-3">超時時數</th><th class="p-3">總時數</th></tr></thead>
+                        <tbody class="divide-y"><tr v-for="item in clientTotals" :key="item.clientId"><td class="p-3">{{ item.name }}</td><td class="p-3">{{ item.sessions }}</td><td class="p-3">{{ item.normal.toFixed(2) }}</td><td class="p-3">{{ item.overtime.toFixed(2) }}</td><td class="p-3 font-bold">{{ item.total.toFixed(2) }}</td></tr></tbody>
+                        <tfoot class="bg-indigo-50 font-black"><tr><td class="p-3">總計</td><td class="p-3">{{ monthBookings.length }}</td><td class="p-3">{{ monthlyHours.normal.toFixed(2) }}</td><td class="p-3">{{ monthlyHours.overtime.toFixed(2) }}</td><td class="p-3">{{ (monthlyHours.normal + monthlyHours.overtime).toFixed(2) }}</td></tr></tfoot>
+                    </table>
+                </div>
+            </section>
+
+            <section v-if="activePage === 'g' && selectedClient" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-lg font-black text-indigo-950">G — Power Automate 匯出</h2>
+                <p class="mt-2 text-sm text-slate-600">匯出 {{ serviceMonth }} 的預約資料為 UTF-8 CSV，包含個案/病人/券編號、服務時間、人員、正常/超時時數、膳食標記及穩定的 Power Automate code。</p>
+                <p class="mt-2 text-xs text-amber-800 bg-amber-50 p-3 rounded-lg">CSV 欄位及 code 使用本系統目前定義。若 Power Automate 流程依賴 Excel 範本的特定欄位名稱或儲存格代碼，需再按原始 Excel 範本調整。</p>
+                <div class="mt-5 flex items-center gap-4">
+                    <div class="text-sm"><span class="font-bold">{{ monthBookings.length }}</span> 項預約</div>
+                    <button @click="exportPowerAutomateCsv" :disabled="!monthBookings.length" class="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40">下載 CSV</button>
+                </div>
+            </section>
+
+            <section v-if="activePage === 'basic' && basicUnlocked" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                <h2 class="text-lg font-black text-indigo-950">Basic — 保密服務及收費設定</h2>
+                <p class="mt-2 text-sm text-amber-800 bg-amber-50 p-3 rounded-lg">此頁費用資料受伺服器密碼保護。請在 NAS 設定專屬的 BASIC_SETTINGS_KEY，並透過 HTTPS 使用本系統。</p>
+                <div v-if="basicUnlocked" class="mt-5 space-y-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
+                        <label class="text-xs font-bold">正常服務開始時間<input v-model="settings.normalStart" type="time" class="mt-1 w-full rounded-lg border-slate-300 text-sm"></label>
+                        <label class="text-xs font-bold">正常服務結束時間<input v-model="settings.normalEnd" type="time" class="mt-1 w-full rounded-lg border-slate-300 text-sm"></label>
+                    </div>
+                    <div>
+                        <div class="mb-2 flex items-center justify-between gap-2">
+                            <div>
+                                <h3 class="font-bold">服務類型費用設定</h3>
+                                <p class="text-xs text-slate-500">輸入每小時服務收費及照顧者費用；金額預設為 $0.00。</p>
+                            </div>
+                            <button @click="addService" class="text-sm font-bold text-indigo-700">＋ 新增服務類型</button>
+                        </div>
+                        <div class="overflow-x-auto rounded-lg border border-slate-200">
+                            <table class="w-full min-w-[960px] text-left text-sm">
+                                <thead class="bg-indigo-50 text-xs text-indigo-950">
+                                    <tr>
+                                        <th class="p-3">服務代碼</th>
+                                        <th class="p-3">服務類型</th>
+                                        <th class="p-3">服務專業類別</th>
+                                        <th class="p-3">服務費（每小時）</th>
+                                        <th class="p-3">照顧者費（每小時）</th>
+                                        <th class="p-3">預設膳食</th>
+                                        <th class="p-3">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <tr v-for="(service, index) in settings.services" :key="index">
+                                        <td class="p-2"><input v-model.trim="service.code" maxlength="20" placeholder="PT" class="w-24 rounded-lg border-slate-300 text-sm uppercase"></td>
+                                        <td class="p-2"><input v-model.trim="service.name" maxlength="120" placeholder="服務名稱" class="w-full rounded-lg border-slate-300 text-sm"></td>
+                                        <td class="p-2"><input v-model.trim="service.serviceProfessional" maxlength="120" placeholder="專業人員／輔助人員" class="w-40 rounded-lg border-slate-300 text-sm"></td>
+                                        <td class="p-2"><input v-model.number="service.serviceFee" type="number" min="0" step="0.01" class="w-36 rounded-lg border-slate-300 text-sm"></td>
+                                        <td class="p-2"><input v-model.number="service.caregiverFee" type="number" min="0" step="0.01" class="w-36 rounded-lg border-slate-300 text-sm"></td>
+                                        <td class="p-2 text-center"><input v-model="service.mealIncluded" type="checkbox" :aria-label="`${service.code || service.name} 預設包含膳食`"></td>
+                                        <td class="p-2"><button @click="removeService(index)" class="text-sm font-bold text-red-700">移除</button></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between items-center mb-2"><h3 class="font-bold">照顧者及每小時費用</h3><button @click="addCaregiver" class="text-sm text-indigo-700">＋ 新增照顧者</button></div>
+                        <div v-for="(caregiver, index) in settings.caregivers" :key="index" class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-2">
+                            <input v-model.trim="caregiver.code" placeholder="照顧者編碼" class="rounded-lg border-slate-300 text-sm">
+                            <input v-model.trim="caregiver.name" placeholder="姓名" class="rounded-lg border-slate-300 text-sm">
+                            <input v-model.number="caregiver.hourlyFee" type="number" min="0" step="0.01" placeholder="每小時費用" class="rounded-lg border-slate-300 text-sm">
+                            <button @click="removeCaregiver(index)" class="text-left text-sm text-red-700">移除</button>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="flex justify-between items-center mb-2"><h3 class="font-bold">公眾假期（每行一日期）</h3><button @click="addHoliday" class="text-sm text-indigo-700">＋ 新增日期</button></div>
+                        <div v-for="(holiday, index) in settings.holidays" :key="index" class="flex max-w-md gap-2 mb-2">
+                            <input v-model="settings.holidays[index]" type="date" class="flex-1 rounded-lg border-slate-300 text-sm">
+                            <button @click="removeHoliday(index)" class="text-sm text-red-700">移除</button>
+                        </div>
+                    </div>
+                    <p v-if="basicError" role="alert" class="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-800">{{ basicError }}</p>
+                    <button @click="saveBasicSettings" :disabled="savingBasic" class="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">{{ savingBasic ? '儲存中...' : '儲存 Basic 設定' }}</button>
+                </div>
+                <p v-if="basicError && !basicUnlocked" role="alert" class="mt-3 text-sm text-red-800">{{ basicError }}</p>
+            </section>
+
+            <div v-if="basicPasswordModal" class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-4" @click.self="basicPasswordModal = false" @keydown.esc="basicPasswordModal = false">
+                <section role="dialog" aria-modal="true" aria-labelledby="basic-password-title" class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+                    <div class="mb-5 flex items-start justify-between gap-4">
+                        <div>
+                            <h2 id="basic-password-title" class="text-xl font-black text-indigo-950">Basic 保密設定</h2>
+                            <p class="mt-1 text-sm text-slate-600">請輸入密碼以查看及修改收費設定。</p>
+                        </div>
+                        <button type="button" @click="basicPasswordModal = false" aria-label="關閉" class="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100">×</button>
+                    </div>
+                    <form @submit.prevent="loadBasicSettings">
+                        <label for="basic-password" class="block text-sm font-bold text-slate-700">Basic 密碼</label>
+                        <input id="basic-password" v-model="basicKey" type="password" inputmode="numeric" autocomplete="current-password" required autofocus class="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm">
+                        <p v-if="basicError" role="alert" class="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{{ basicError }}</p>
+                        <div class="mt-5 flex justify-end gap-2">
+                            <button type="button" @click="basicPasswordModal = false" class="rounded-lg px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100">取消</button>
+                            <button type="submit" :disabled="basicUnlocking" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{{ basicUnlocking ? '驗證中...' : '解鎖 Basic' }}</button>
+                        </div>
+                        <p class="mt-4 text-xs text-slate-500">請於 NAS 設定專屬的 BASIC_SETTINGS_KEY，並透過 HTTPS 使用本系統。</p>
+                    </form>
+                </section>
+            </div>
+
+            <div v-if="addBookingModal" class="fixed inset-0 z-50 bg-slate-950/60 p-4 flex items-center justify-center" @click.self="addBookingModal = false">
+                <section role="dialog" aria-modal="true" aria-labelledby="booking-title" class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                    <form @submit.prevent="saveBooking">
+                        <div class="p-5 border-b border-slate-200 flex items-center justify-between">
+                            <div>
+                                <h2 id="booking-title" class="text-lg font-black text-indigo-950">{{ editingBookingId ? '編輯服務預約' : '新增服務預約' }}</h2>
+                                <p class="text-sm text-slate-500">{{ selectedClient.nameCn }} · {{ selectedClient.patientId }} · {{ newBooking.date }}</p>
+                            </div>
+                            <button type="button" @click="addBookingModal = false" class="text-slate-400 hover:text-slate-700 p-2" aria-label="關閉">
+                                <i class="fa-solid fa-xmark text-lg"></i>
+                            </button>
+                        </div>
+                        <div class="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <label class="text-xs font-bold">服務日期 *
+                                <input v-model="newBooking.date" @change="adjustRepeatForDate" type="date" :min="bookingDateMin" :max="bookingDateMax" required class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                            </label>
+                            <label class="text-xs font-bold">服務類型 *
+                                <select v-model="newBooking.serviceType" @change="applyServiceDefaults" required class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                                    <option v-for="service in settings.services" :key="service.name" :value="service.name">{{ service.name }}</option>
+                                    <option v-if="!settings.services.length" value="" disabled>請先在 Basic 設定服務</option>
+                                </select>
+                            </label>
+                            <label v-if="!isMealService(newBooking.serviceType)" class="text-xs font-bold">開始時間 *
+                                <input v-model="newBooking.startTime" type="time" required class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                            </label>
+                            <label v-if="!isMealService(newBooking.serviceType)" class="text-xs font-bold">結束時間 *
+                                <input v-model="newBooking.endTime" type="time" required class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                            </label>
+                            <label v-if="!editingBookingId" class="text-xs font-bold">重複預約
+                                <select v-model="newBooking.repeatFrequency" @change="setRepeatFrequency" class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                                    <option value="none">不重複</option>
+                                    <option value="daily" :disabled="!canRepeatFrequency('daily', newBooking.date)">每日（限本月）</option>
+                                    <option value="weekly" :disabled="!canRepeatFrequency('weekly', newBooking.date)">每週（限本月）</option>
+                                </select>
+                            </label>
+                            <label v-if="!editingBookingId && newBooking.repeatFrequency !== 'none'" class="text-xs font-bold">重複至（包括該日期）*
+                                <input v-model="newBooking.repeatUntil" type="date" :min="newBooking.date" :max="`${newBooking.date.slice(0, 7)}-${new Date(Number(newBooking.date.slice(0, 4)), Number(newBooking.date.slice(5, 7)), 0).getDate()}`" required class="mt-1 w-full rounded-lg border-slate-300 text-sm">
+                                <span class="mt-1 block font-normal text-slate-500">預設下一{{ newBooking.repeatFrequency === 'daily' ? '日' : '週' }}；只會重複至服務日期所在月份。</span>
+                            </label>
+                            <label class="text-xs font-bold">照顧者編碼 *
+                                <input v-model.trim="newBooking.caregiverCode" list="caregiver-codes" required maxlength="50" class="mt-1 w-full rounded-lg border border-slate-400 text-sm shadow-sm">
+                                <datalist id="caregiver-codes"><option v-for="caregiver in settings.caregivers" :key="caregiver.code" :value="caregiver.code">{{ caregiver.name }}</option></datalist>
+                            </label>
+                            <label class="text-xs font-bold">照顧者姓名 *
+                                <input v-model.trim="newBooking.caregiverName" required maxlength="150" class="mt-1 w-full rounded-lg border border-slate-400 text-sm shadow-sm">
+                            </label>
+                            <label class="text-xs font-bold sm:col-span-2">備註
+                                <textarea v-model.trim="newBooking.remarks" rows="2" maxlength="1000" class="mt-1 w-full rounded-lg border border-slate-400 text-sm shadow-sm"></textarea>
+                            </label>
+                            <p v-if="bookingError" role="alert" class="sm:col-span-2 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-800">{{ bookingError }}</p>
+                        </div>
+                        <div class="px-5 pb-5 flex justify-end gap-3">
+                            <button type="button" @click="addBookingModal = false; editingBookingId = null" class="px-4 py-2 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-100">取消</button>
+                            <button type="submit" :disabled="isSavingBooking" class="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50">{{ isSavingBooking ? '儲存中…' : editingBookingId ? '更新預約' : '儲存預約' }}</button>
+                        </div>
+                    </form>
+                </section>
+            </div>
 
             <div v-if="addClientModal" class="fixed inset-0 z-50 bg-slate-950/60 p-4 flex items-center justify-center" @click.self="addClientModal = false">
                 <section role="dialog" aria-modal="true" aria-labelledby="add-client-title" class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -208,7 +763,6 @@
                                 <select v-model="newClient.pic" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
                                     <option v-for="pic in picOptions" :key="pic" :value="pic">{{ pic }}</option>
                                 </select>
-                                <span class="mt-1 block text-[10px] font-normal text-slate-500">PIC 欄位尚未加入資料庫，因此不會儲存。</span>
                             </label>
                             <label class="text-xs font-bold text-slate-700">共同付款百分比 *
                                 <select v-model="newClient.copayTier" required class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-normal bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
